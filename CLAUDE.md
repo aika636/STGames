@@ -40,7 +40,7 @@ style.css        # стили, префикс .sudoku-
 settings.html    # панель в Extensions drawer
 docs/            # roadmap (фазы, риски) / development (состояние, команды) /
                  # sillytavern-api (проверенные API ST 1.18.0)
-deploy.sh        # rsync на тестовом стенде
+deploy.sh        # rsync на тестовый ST (не в git)
 ```
 
 Держать `index.js` тонким: он связывает модули, логика — в `src/`.
@@ -55,7 +55,7 @@ node tests/generator.test.mjs 10   # быстрый прогон: 10 на уро
 node tests/game.test.mjs       # модель партии: ходы, пометки, undo/redo, таймер
 npm install --no-save jsdom && node tests/ui.test.mjs      # доска, окно, точки запуска
 node tests/input.test.mjs      # ввод: клавиатура, заметки, undo, победа (jsdom)
-./deploy.sh                    # залить на тестовый ST (тестовом стенде) + хардрелоад вкладки
+./deploy.sh                    # залить на тестовый ST + хардрелоад вкладки
 ```
 
 Тесты без зависимостей: свой раннер `tests/_harness.mjs`, npm-пакеты не нужны.
@@ -102,5 +102,5 @@ candidates → пары) и «уровня по числу подсказок» 
 - Настройки: замороженный `DEFAULT_SETTINGS` + мерж недостающих ключей при загрузке.
 - `event_types` vs `eventTypes`: только через `getEventTypes(ctx)`, подписку пропускать, если
   имени события нет.
-- Любое предположение о внутренностях ST проверять на живой инсталляции (ST 1.18.0,
-  `http://<тестовый ST>`) и записывать в `docs/sillytavern-api.md` с версией ST.
+- Любое предположение о внутренностях ST проверять на живой инсталляции (ST 1.18.0)
+  и записывать в `docs/sillytavern-api.md` с версией ST.

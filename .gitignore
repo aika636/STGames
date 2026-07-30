@@ -14,3 +14,6 @@ Thumbs.db
 .claude/
 .mcp.json
 .serena/
+
+# Локальный деплой на тестовый стенд (внутренние адреса)
+deploy.sh

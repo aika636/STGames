@@ -1,7 +1,7 @@
 # API SillyTavern, на которые опирается Sudoku
 
-Всё проверено на живой инсталляции **SillyTavern 1.18.0** (docker `ghcr.io/sillytavern/sillytavern:latest`
-на `тестовом стенде`, UI — `http://<тестовый ST>`), чтением исходников внутри контейнера
+Всё проверено на живой инсталляции **SillyTavern 1.18.0** (docker `ghcr.io/sillytavern/sillytavern:latest`),
+чтением исходников внутри контейнера
 (`/home/node/app/public/`). Дата проверки: 2026-07-31.
 
 Расширение не читает и не пишет чат, поэтому список коротких зависимостей ниже — это

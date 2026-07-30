@@ -1,0 +1,16 @@
+# Зависимости разработки (в браузер не попадают — расширение остаётся без сборки)
+node_modules/
+package-lock.json
+
+# Мусор ОС и редакторов
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Локальная обвязка агентов
+.ai/
+.claude/
+.mcp.json
+.serena/

@@ -1,0 +1,47 @@
+<div class="sudoku-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Sudoku</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+
+            <div class="sudoku-row">
+                <label for="sudoku_difficulty">Уровень сложности</label>
+                <select id="sudoku_difficulty" class="text_pole">
+                    <option value="easy">Лёгкий</option>
+                    <option value="medium">Средний</option>
+                    <option value="hard">Сложный</option>
+                    <option value="expert">Эксперт</option>
+                </select>
+            </div>
+
+            <div class="sudoku-row">
+                <label class="checkbox_label" for="sudoku_highlight_conflicts">
+                    <input type="checkbox" id="sudoku_highlight_conflicts" />
+                    <span>Подсвечивать конфликты</span>
+                </label>
+            </div>
+
+            <div class="sudoku-row">
+                <label class="checkbox_label" for="sudoku_auto_clean_notes">
+                    <input type="checkbox" id="sudoku_auto_clean_notes" />
+                    <span>Автоматически убирать заметки</span>
+                </label>
+            </div>
+
+            <div class="sudoku-row">
+                <label class="checkbox_label" for="sudoku_show_timer">
+                    <input type="checkbox" id="sudoku_show_timer" />
+                    <span>Показывать таймер</span>
+                </label>
+            </div>
+
+            <small>
+                Sudoku — мини-игра поверх чата. Головоломки генерируются локально в браузере,
+                чат и персонаж в игре не участвуют.
+            </small>
+
+        </div>
+    </div>
+</div>

@@ -1,0 +1,238 @@
+/* Стили расширения Sudoku. Всё под префиксом .sudoku-, никаких голых селекторов тегов:
+   расширение живёт внутри чужого DOM и не должно задевать вёрстку SillyTavern.
+   Цвета берутся из CSS-переменных темы ST, чтобы доска не выбивалась из оформления. */
+
+/* --- Панель настроек --- */
+
+.sudoku-settings .sudoku-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+}
+
+.sudoku-settings .sudoku-row > label:not(.checkbox_label) {
+    flex: 0 0 auto;
+}
+
+.sudoku-settings select.text_pole {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* --- Окно игры --- */
+
+.sudoku-root {
+    /* Размер доски: квадрат по меньшей стороне экрана, но не больше 460px и не меньше
+       той ширины, при которой цифры перестают читаться. */
+    --sudoku-size: clamp(260px, min(78vmin, 460px), 460px);
+    --sudoku-cell: calc(var(--sudoku-size) / 9);
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
+    color: var(--SmartThemeBodyColor);
+}
+
+.sudoku-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: var(--sudoku-size);
+    max-width: 100%;
+}
+
+.sudoku-header .sudoku-select {
+    flex: 0 1 auto;
+    width: auto;
+    min-width: 0;
+}
+
+.sudoku-timer {
+    font-variant-numeric: tabular-nums;
+    font-size: 1.1em;
+    opacity: 0.85;
+}
+
+.sudoku-hidden {
+    visibility: hidden;
+}
+
+.sudoku-status {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+/* --- Доска --- */
+
+.sudoku-board {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    grid-template-rows: repeat(9, 1fr);
+    width: var(--sudoku-size);
+    height: var(--sudoku-size);
+    max-width: 100%;
+    border: 2px solid var(--SmartThemeBorderColor);
+    border-radius: 4px;
+    background-color: var(--black30a);
+    /* Линии сетки рисуются границами клеток; собственные границы доски снаружи. */
+    overflow: hidden;
+    touch-action: manipulation;
+}
+
+.sudoku-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+    border-left: 1px solid var(--SmartThemeBorderColor);
+    font-size: calc(var(--sudoku-cell) * 0.58);
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    /* Клик по клетке не должен уводить фокус из окна игры (важно для клавиатуры). */
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Первая клетка строки/столбца не рисует внешнюю линию — её рисует рамка доски. */
+.sudoku-cell:nth-child(-n + 9) {
+    border-top: none;
+}
+
+.sudoku-cell:nth-child(9n + 1) {
+    border-left: none;
+}
+
+/* Границы боксов: data-атрибуты проставляются в board.js. */
+.sudoku-cell[data-box-left] {
+    border-left-width: 2px;
+}
+
+.sudoku-cell[data-box-top] {
+    border-top-width: 2px;
+}
+
+.sudoku-value {
+    pointer-events: none;
+}
+
+/* Подсказки — жирные и приглушённые: их нельзя менять, и это должно быть видно сразу. */
+.sudoku-cell.sudoku-given {
+    font-weight: 700;
+    cursor: default;
+}
+
+/* Цифры, введённые игроком, — акцентным цветом темы. */
+.sudoku-cell.sudoku-filled:not(.sudoku-given) .sudoku-value {
+    color: var(--SmartThemeQuoteColor);
+}
+
+.sudoku-cell.sudoku-peer {
+    background-color: var(--white30a);
+}
+
+.sudoku-cell.sudoku-same {
+    background-color: var(--white30a);
+    box-shadow: inset 0 0 0 1px var(--SmartThemeQuoteColor);
+}
+
+.sudoku-cell.sudoku-selected {
+    background-color: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeBlurTintColor);
+}
+
+.sudoku-cell.sudoku-conflict .sudoku-value {
+    color: #e0533d;
+}
+
+.sudoku-cell.sudoku-conflict {
+    background-color: rgba(224, 83, 61, 0.18);
+}
+
+.sudoku-board-done {
+    box-shadow: 0 0 12px var(--SmartThemeQuoteColor);
+}
+
+/* --- Пометки --- */
+
+.sudoku-notes {
+    position: absolute;
+    inset: 2px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    font-size: calc(var(--sudoku-cell) * 0.26);
+    line-height: 1;
+    pointer-events: none;
+}
+
+.sudoku-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+}
+
+.sudoku-note.sudoku-note-on {
+    opacity: 0.65;
+}
+
+/* В заполненной клетке пометок нет — прячем сетку целиком, чтобы не мешала цифре. */
+.sudoku-cell.sudoku-filled .sudoku-notes {
+    display: none;
+}
+
+/* --- Фолбэк-оверлей (когда попапа ST нет) --- */
+
+.sudoku-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--black70a);
+}
+
+.sudoku-dialog {
+    position: relative;
+    padding: 20px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 10px;
+    background-color: var(--SmartThemeBlurTintColor);
+    backdrop-filter: blur(10px);
+    max-height: 90vh;
+    overflow: auto;
+}
+
+.sudoku-close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    cursor: pointer;
+    opacity: 0.7;
+    font-size: 1.2em;
+}
+
+.sudoku-close:hover {
+    opacity: 1;
+}
+
+/* --- Узкие экраны --- */
+
+@media (max-width: 500px) {
+    .sudoku-root {
+        --sudoku-size: min(94vw, 94vmin);
+    }
+
+    .sudoku-header {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+}

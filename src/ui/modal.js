@@ -25,8 +25,8 @@ import {
     toggleNote,
     undo,
 } from '../core/game.js';
-import { createBoard } from './board.js';
-import { attachKeyboard, attachPointer, createNumpad, moveSelection } from './input.js';
+import { createBoard, createRemainingCounter } from './board.js';
+import { attachKeyboard, attachPointer, createControls, moveSelection } from './input.js';
 
 const LEVEL_LABELS = Object.freeze({
     easy: 'Лёгкий',
@@ -112,6 +112,7 @@ function buildSession(level) {
         timer,
         status,
         pad: null,
+        remaining: null,
         state: null,
         timerId: null,
         // Выбранная клетка (индекс или null) и режим заметок — состояние ввода, а не
@@ -156,10 +157,12 @@ function buildSession(level) {
         },
     };
 
-    const pad = createNumpad(handlers);
+    const pad = createControls(handlers);
+    const remaining = createRemainingCounter();
     local.pad = pad;
+    local.remaining = remaining;
 
-    root.append(header, board.root, pad.root, status);
+    root.append(header, board.root, remaining.root, pad.root, status);
 
     const select = (idx) => {
         // Повторный клик по выбранной клетке снимает выделение — так проще убрать
@@ -228,8 +231,8 @@ function redraw(local) {
     local.board.root.classList.toggle('sudoku-board-notes', local.notesMode);
     updateTimer(local);
 
+    local.remaining.update(remainingCounts(local.state));
     local.pad.update({
-        counts: remainingCounts(local.state),
         notesMode: local.notesMode,
         canUndo: canUndo(local.state),
         canRedo: canRedo(local.state),

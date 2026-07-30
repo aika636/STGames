@@ -52,7 +52,8 @@ await Promise.resolve(); // даём openSudoku дойти до showPopup
 const cells = () => Array.from(root.querySelectorAll('.sudoku-cell'));
 const valueAt = (idx) => cells()[idx].querySelector('.sudoku-value').textContent;
 const status = () => root.querySelector('.sudoku-status').textContent;
-const padButton = (digit) => root.querySelector(`.sudoku-pad-btn[data-digit="${digit}"]`);
+const remainingFor = (digit) => root.querySelectorAll('.sudoku-remaining-item')[digit - 1]
+    .querySelector('.sudoku-remaining-left').textContent;
 const actionButton = (name) => root.querySelector(`.sudoku-pad-action[data-action="${name}"]`);
 
 function click(el) {
@@ -80,6 +81,24 @@ function select(idx) {
     return cell;
 }
 
+// Пара пустых клеток в одной строке. Доска каждый раз новая, фиксированных
+// индексов нет, а «сосед справа» может оказаться подсказкой.
+function emptyPairInRow() {
+    const list = cells();
+    const free = (idx) => !list[idx].classList.contains('sudoku-given')
+        && !list[idx].querySelector('.sudoku-value').textContent;
+
+    for (let row = 0; row < 9; row++) {
+        const inRow = [];
+        for (let col = 0; col < 9; col++) {
+            const idx = row * 9 + col;
+            if (free(idx)) inRow.push(idx);
+        }
+        if (inRow.length >= 2) return [inRow[0], inRow[1]];
+    }
+    throw new Error('не нашлось двух пустых клеток в одной строке');
+}
+
 // Индекс пустой клетки — доска генерируется случайно, фиксированного номера нет.
 function emptyCell(n = 0) {
     let seen = 0;
@@ -93,17 +112,19 @@ function emptyCell(n = 0) {
 
 console.log('input (jsdom)');
 
-test('окно собрано вместе с numpad', () => {
+test('окно собрано: счётчик оставшихся и кнопки действий', () => {
     assert(root, 'попап получил корень игры');
-    assertEqual(root.querySelectorAll('.sudoku-pad-btn').length, 9, 'кнопок цифр');
+    assertEqual(root.querySelectorAll('.sudoku-remaining-item').length, 9, 'пунктов счётчика');
     assertEqual(root.querySelectorAll('.sudoku-pad-action').length, 4, 'кнопок действий');
+    // Экранного ряда цифр в окне нет: цифры вводятся с клавиатуры.
+    assertEqual(root.querySelectorAll('.sudoku-pad-btn').length, 0, 'кнопок ввода цифр');
 });
 
 test('клик по клетке выделяет её, повторный — снимает', () => {
     const idx = emptyCell();
     click(cells()[idx]);
     assert(cells()[idx].classList.contains('sudoku-selected'), 'клетка выделена');
-    assert(cells()[idx + 1].classList.contains('sudoku-peer'), 'сосед подсвечен');
+    assertEqual(root.querySelectorAll('.sudoku-peer').length, 0, 'строка и столбец не заливаются');
 
     click(cells()[idx]);
     assert(!cells()[idx].classList.contains('sudoku-selected'), 'повторный клик снял выделение');
@@ -179,26 +200,24 @@ test('режим заметок пишет пометки, а не значен�
     assert(!actionButton('notes').classList.contains('sudoku-pad-on'), 'режим выключен кнопкой');
 });
 
-test('numpad ставит цифру и показывает счётчик оставшихся', () => {
+test('счётчик оставшихся цифр идёт за ходами', () => {
     const idx = emptyCell();
     select(idx);
 
-    const before = padButton(4).querySelector('.sudoku-pad-left').textContent;
-    click(padButton(4));
-    assertEqual(valueAt(idx), '4', 'цифра с numpad проставлена');
-
-    const after = padButton(4).querySelector('.sudoku-pad-left').textContent;
-    assertEqual(Number(after), Number(before) - 1, 'счётчик оставшихся уменьшился');
+    const before = remainingFor(4);
+    press('4');
+    assertEqual(valueAt(idx), '4', 'цифра проставлена');
+    assertEqual(Number(remainingFor(4)), Number(before) - 1, 'счётчик оставшихся уменьшился');
 
     click(actionButton('erase'));
     assertEqual(valueAt(idx), '', 'кнопка «стереть» очистила клетку');
+    assertEqual(remainingFor(4), before, 'счётчик вернулся к прежнему значению');
 });
 
 test('undo/redo откатывают ход и авточистку пометок у соседей', () => {
-    const idx = emptyCell();
-    const peer = idx + 1 < 81 && Math.floor((idx + 1) / 9) === Math.floor(idx / 9)
-        ? idx + 1
-        : idx - 1;
+    // Нужны две пустые клетки в одной строке: авточистка снимает пометку только
+    // у соседей по строке, столбцу или боксу.
+    const [idx, peer] = emptyPairInRow();
 
     // Пометка 6 у соседа по строке; ставим 6 рядом — авточистка её снимет.
     select(peer);

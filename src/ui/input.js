@@ -1,4 +1,4 @@
-// Ввод: мышь/тач по доске, клавиатура и экранный numpad.
+// Ввод: мышь/тач по доске, клавиатура и кнопки действий под доской.
 //
 // Модуль не хранит состояние партии и ничего в ней не меняет — он только превращает
 // события браузера в вызовы переданных обработчиков (onDigit, onErase, onMove, ...).
@@ -9,9 +9,12 @@
 // на каждую обработанную клавишу зовётся stopPropagation() + preventDefault(), иначе
 // цифры уедут в поле ввода чата.
 
-import { DIGITS, SIZE } from '../core/grid.js';
+import { SIZE } from '../core/grid.js';
 
-// --- Экранный numpad
+// --- Панель действий под доской
+//
+// Экранного ряда цифр 1–9 здесь нет намеренно: цифры вводятся с клавиатуры, а кнопки
+// numpad'а занимали половину окна. Счётчик оставшихся цифр живёт отдельно, в board.js.
 
 const PAD_ACTIONS = Object.freeze([
     { key: 'notes', label: 'Заметки', icon: 'fa-pencil', title: 'Режим заметок (N)' },
@@ -20,41 +23,10 @@ const PAD_ACTIONS = Object.freeze([
     { key: 'redo', label: 'Вернуть', icon: 'fa-rotate-right', title: 'Вернуть (Ctrl+Y)' },
 ]);
 
-// handlers: { onDigit(digit), onErase(), onToggleNotes(), onUndo(), onRedo() }
-export function createNumpad(handlers = {}) {
+// handlers: { onErase(), onToggleNotes(), onUndo(), onRedo() }
+export function createControls(handlers = {}) {
     const root = document.createElement('div');
     root.className = 'sudoku-pad';
-
-    const digitsRow = document.createElement('div');
-    digitsRow.className = 'sudoku-pad-digits';
-
-    const digitButtons = new Map();
-    for (const digit of DIGITS) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'sudoku-pad-btn';
-        button.dataset.digit = String(digit);
-        button.setAttribute('aria-label', `Цифра ${digit}`);
-
-        const label = document.createElement('span');
-        label.className = 'sudoku-pad-digit';
-        label.textContent = String(digit);
-
-        // Сколько этой цифры ещё не выставлено. Пустой текст, пока не пришло состояние.
-        const left = document.createElement('span');
-        left.className = 'sudoku-pad-left';
-
-        button.append(label, left);
-        digitsRow.appendChild(button);
-        digitButtons.set(digit, { button, left });
-    }
-
-    // Делегирование: одна подписка вместо девяти, и кнопки можно перерисовывать.
-    digitsRow.addEventListener('click', (event) => {
-        const button = event.target.closest?.('.sudoku-pad-btn');
-        if (!button || !digitsRow.contains(button)) return;
-        handlers.onDigit?.(Number(button.dataset.digit));
-    });
 
     const actionsRow = document.createElement('div');
     actionsRow.className = 'sudoku-pad-actions';
@@ -90,18 +62,9 @@ export function createNumpad(handlers = {}) {
         }
     });
 
-    root.append(digitsRow, actionsRow);
+    root.appendChild(actionsRow);
 
-    // counts: { 1: сколько осталось, ... }; флаги — состояние режима и истории.
-    const update = ({ counts = {}, notesMode = false, canUndo = false, canRedo = false } = {}) => {
-        for (const digit of DIGITS) {
-            const { button, left } = digitButtons.get(digit);
-            const remaining = counts[digit] ?? 0;
-            left.textContent = remaining > 0 ? String(remaining) : '';
-            // Все девять выставлены — кнопка гаснет, но остаётся кликабельной: цифру
-            // ещё могут стирать и переставлять, а недоступная кнопка сбивала бы с толку.
-            button.classList.toggle('sudoku-pad-done', remaining <= 0);
-        }
+    const update = ({ notesMode = false, canUndo = false, canRedo = false } = {}) => {
         actionButtons.get('notes').classList.toggle('sudoku-pad-on', notesMode);
         actionButtons.get('notes').setAttribute('aria-pressed', String(notesMode));
         actionButtons.get('undo').classList.toggle('sudoku-pad-off', !canUndo);
@@ -110,7 +73,7 @@ export function createNumpad(handlers = {}) {
 
     update();
 
-    return { root, digitButtons, actionButtons, update };
+    return { root, actionButtons, update };
 }
 
 // --- Мышь и тач по доске

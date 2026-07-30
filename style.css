@@ -28,6 +28,15 @@
     --sudoku-size: clamp(260px, min(78vmin, 460px), 460px);
     --sudoku-cell: calc(var(--sudoku-size) / 9);
 
+    /* Тема таверны. Акцент и рамки берутся из переменных ST, а все заливки считаются
+       от currentColor: на тёмной теме текст светлый и подсветка выходит светлой, на
+       светлой — наоборот. Так окно подхватывает любую тему, а не только тёмные. */
+    --sudoku-accent: var(--SmartThemeQuoteColor, currentColor);
+    --sudoku-line: var(--SmartThemeBorderColor, currentColor);
+    --sudoku-danger: #e0533d;
+    --sudoku-tint-soft: color-mix(in srgb, currentColor 6%, transparent);
+    --sudoku-tint-strong: color-mix(in srgb, currentColor 16%, transparent);
+
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -77,9 +86,12 @@
     width: var(--sudoku-size);
     height: var(--sudoku-size);
     max-width: 100%;
-    border: 2px solid var(--SmartThemeBorderColor);
+    border: 2px solid var(--sudoku-line);
     border-radius: 4px;
+    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
+       вторую строку и оставит первую. */
     background-color: var(--black30a);
+    background-color: var(--sudoku-tint-soft);
     /* Линии сетки рисуются границами клеток; собственные границы доски снаружи. */
     overflow: hidden;
     touch-action: manipulation;
@@ -90,8 +102,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-top: 1px solid var(--SmartThemeBorderColor);
-    border-left: 1px solid var(--SmartThemeBorderColor);
+    border-top: 1px solid var(--sudoku-line);
+    border-left: 1px solid var(--sudoku-line);
     font-size: calc(var(--sudoku-cell) * 0.58);
     line-height: 1;
     cursor: pointer;
@@ -130,25 +142,26 @@
 
 /* Цифры, введённые игроком, — акцентным цветом темы. */
 .sudoku-cell.sudoku-filled:not(.sudoku-given) .sudoku-value {
-    color: var(--SmartThemeQuoteColor);
+    color: var(--sudoku-accent);
 }
 
-.sudoku-cell.sudoku-peer {
-    background-color: var(--white30a);
-}
-
+/* Клетки с той же цифрой, что и в выбранной. Строку/столбец/бокс не подсвечиваем:
+   заливка трёх юнитов забивает доску сильнее, чем помогает её читать. */
 .sudoku-cell.sudoku-same {
     background-color: var(--white30a);
-    box-shadow: inset 0 0 0 1px var(--SmartThemeQuoteColor);
+    background-color: var(--sudoku-tint-strong);
 }
 
+/* Выбранная клетка — рамкой, а не сплошной заливкой акцентом: на светлых темах
+   светлый текст по светлому акценту переставал читаться. */
 .sudoku-cell.sudoku-selected {
-    background-color: var(--SmartThemeQuoteColor);
-    color: var(--SmartThemeBlurTintColor);
+    background-color: var(--white30a);
+    background-color: color-mix(in srgb, var(--sudoku-accent) 22%, transparent);
+    box-shadow: inset 0 0 0 2px var(--sudoku-accent);
 }
 
 .sudoku-cell.sudoku-conflict .sudoku-value {
-    color: #e0533d;
+    color: var(--sudoku-danger);
 }
 
 .sudoku-cell.sudoku-conflict {
@@ -156,7 +169,7 @@
 }
 
 .sudoku-board-done {
-    box-shadow: 0 0 12px var(--SmartThemeQuoteColor);
+    box-shadow: 0 0 12px var(--sudoku-accent);
 }
 
 /* --- Пометки --- */
@@ -188,56 +201,38 @@
     display: none;
 }
 
-/* --- Экранный numpad --- */
+/* --- Счётчик оставшихся цифр и панель действий --- */
 
-.sudoku-pad {
+.sudoku-remaining {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 10px;
     width: var(--sudoku-size);
     max-width: 100%;
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
 }
 
-.sudoku-pad-digits {
-    display: grid;
-    grid-template-columns: repeat(9, 1fr);
-    gap: 4px;
+.sudoku-remaining-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
 }
 
-.sudoku-pad-btn {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    aspect-ratio: 3 / 4;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 4px;
-    background-color: var(--black30a);
-    color: inherit;
-    font-family: inherit;
-    font-size: calc(var(--sudoku-cell) * 0.5);
-    line-height: 1;
-    cursor: pointer;
+.sudoku-remaining-digit {
+    color: var(--sudoku-accent);
+    font-weight: 600;
 }
 
-.sudoku-pad-btn:hover {
-    background-color: var(--white30a);
-}
-
-/* Все девять цифр выставлены — кнопка гаснет, но остаётся рабочей. */
-.sudoku-pad-btn.sudoku-pad-done {
-    opacity: 0.35;
-}
-
-/* Счётчик оставшихся: мелкая цифра в углу, не мешает попасть пальцем по кнопке. */
-.sudoku-pad-left {
-    position: absolute;
-    right: 2px;
-    bottom: 1px;
-    font-size: 0.4em;
+.sudoku-remaining-left {
     opacity: 0.7;
-    pointer-events: none;
+}
+
+/* Цифра выставлена вся — пункт гаснет, но остаётся на месте: строка не должна
+   дёргаться по ширине на каждом ходе. */
+.sudoku-remaining-item.sudoku-remaining-done {
+    opacity: 0.35;
 }
 
 .sudoku-pad-actions {
@@ -256,7 +251,7 @@
 
 /* Режим заметок включён — кнопка залита акцентным цветом темы. */
 .sudoku-pad-action.sudoku-pad-on {
-    background-color: var(--SmartThemeQuoteColor);
+    background-color: var(--sudoku-accent);
     color: var(--SmartThemeBlurTintColor);
 }
 
@@ -282,6 +277,8 @@
     background-color: var(--black70a);
 }
 
+/* Оверлей лежит снаружи .sudoku-root, поэтому переменные --sudoku-* сюда не доходят —
+   цвета берутся из темы ST напрямую. */
 .sudoku-dialog {
     position: relative;
     padding: 20px;

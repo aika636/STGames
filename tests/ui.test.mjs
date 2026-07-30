@@ -46,10 +46,10 @@ const context = {
 
 globalThis.SillyTavern = { getContext: () => context };
 
-const { createBoard } = await import('../src/ui/board.js');
+const { createBoard, createRemainingCounter } = await import('../src/ui/board.js');
 const { openSudoku, isOpen } = await import('../src/ui/modal.js');
 const { initSlashCommand, initWandButton } = await import('../src/ui/launcher.js');
-const { createGame, setValue, toggleNote } = await import('../src/core/game.js');
+const { createGame, remainingCounts, setValue, toggleNote } = await import('../src/core/game.js');
 const { generatePuzzle } = await import('../src/core/generator.js');
 const { mulberry32 } = await import('../src/core/rng.js');
 
@@ -109,22 +109,46 @@ test('render показывает пометки и прячет их под ц�
     assert(!notes[2].classList.contains('sudoku-note-on'), 'после ввода цифры пометки сняты');
 });
 
-test('render подсвечивает выбранную клетку, её юниты и одинаковые цифры', () => {
+test('render подсвечивает выбранную клетку и одинаковые цифры, но не юниты', () => {
     const state = newGame();
     const board = createBoard();
-    const selected = 40; // центр доски
+
+    // Клетка с цифрой, которая встречается на доске ещё раз — иначе проверять нечего.
+    const selected = state.values.findIndex((value, i) => (
+        value !== 0 && state.values.some((other, j) => other === value && j !== i)
+    ));
+    assert(selected >= 0, 'на доске есть повторяющаяся цифра');
     board.render(state, { selected });
 
     assert(board.cells[selected].cell.classList.contains('sudoku-selected'), 'выбранная клетка');
-    assert(board.cells[selected - 1].cell.classList.contains('sudoku-peer'), 'сосед по строке подсвечен');
-    assert(board.cells[4].cell.classList.contains('sudoku-peer'), 'сосед по столбцу подсвечен');
-    assert(!board.cells[0].cell.classList.contains('sudoku-peer'), 'дальняя клетка не подсвечена');
 
     const digit = state.values[selected];
-    if (digit) {
-        const same = state.values.findIndex((value, i) => value === digit && i !== selected);
-        assert(board.cells[same].cell.classList.contains('sudoku-same'), 'одинаковая цифра подсвечена');
-    }
+    const same = state.values.findIndex((value, i) => value === digit && i !== selected);
+    assert(board.cells[same].cell.classList.contains('sudoku-same'), 'одинаковая цифра подсвечена');
+
+    // Строка/столбец/бокс больше не заливаются: подсветка юнитов убрана намеренно.
+    assertEqual(board.root.querySelectorAll('.sudoku-peer').length, 0, 'клеток с подсветкой юнита');
+
+    // Сосед по строке подсвечен ровно тогда, когда в нём стоит та же цифра.
+    const neighbour = board.cells[selected + (selected % 9 === 8 ? -1 : 1)];
+    assertEqual(
+        neighbour.cell.classList.contains('sudoku-same'),
+        state.values[Number(neighbour.cell.dataset.idx)] === digit,
+        'сосед подсвечен только по совпадению цифры',
+    );
+});
+
+test('createRemainingCounter показывает, сколько цифр осталось', () => {
+    const state = newGame();
+    const counter = createRemainingCounter();
+    counter.update(remainingCounts(state));
+
+    assertEqual(counter.root.querySelectorAll('.sudoku-remaining-item').length, 9, 'пунктов счётчика');
+
+    const digit = state.values.find((value) => value !== 0);
+    const placed = state.values.filter((value) => value === digit).length;
+    const { left } = counter.items.get(digit);
+    assertEqual(Number(left.textContent), 9 - placed, `осталось цифр ${digit}`);
 });
 
 test('render помечает конфликты и уважает настройку', () => {

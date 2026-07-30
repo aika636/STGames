@@ -6,7 +6,7 @@
 // Перерисовка «снести и построить заново» на каждый ход была бы заметна на слабых
 // телефонах и убивала бы фокус клавиатуры.
 
-import { BOX_OF, CELLS, COL_OF, DIGITS, ROW_OF, SIZE } from '../core/grid.js';
+import { CELLS, COL_OF, DIGITS, ROW_OF, SIZE } from '../core/grid.js';
 import { getConflicts, hasNote, isGiven } from '../core/game.js';
 
 export function createBoard() {
@@ -53,6 +53,45 @@ export function createBoard() {
     };
 }
 
+// Строка «сколько каждой цифры осталось» под доской. Отдельный элемент, а не часть
+// панели действий: экранных кнопок ввода цифр в окне нет, а счётчик нужен.
+export function createRemainingCounter() {
+    const root = document.createElement('div');
+    root.className = 'sudoku-remaining';
+
+    const items = new Map();
+    for (const digit of DIGITS) {
+        const item = document.createElement('span');
+        item.className = 'sudoku-remaining-item';
+
+        const label = document.createElement('span');
+        label.className = 'sudoku-remaining-digit';
+        label.textContent = String(digit);
+
+        const left = document.createElement('span');
+        left.className = 'sudoku-remaining-left';
+
+        item.append(label, left);
+        root.appendChild(item);
+        items.set(digit, { item, left });
+    }
+
+    const update = (counts = {}) => {
+        for (const digit of DIGITS) {
+            const { item, left } = items.get(digit);
+            const remaining = counts[digit] ?? 0;
+            left.textContent = String(Math.max(remaining, 0));
+            // Цифра выставлена вся — пункт гаснет, но остаётся на месте: строка не
+            // должна дёргаться по ширине при каждом ходе.
+            item.classList.toggle('sudoku-remaining-done', remaining <= 0);
+        }
+    };
+
+    update();
+
+    return { root, items, update };
+}
+
 // selected — индекс выбранной клетки или null. highlightConflicts берётся из настроек.
 function render(root, cells, state, { selected = null, highlightConflicts = true } = {}) {
     const conflicts = highlightConflicts ? getConflicts(state) : EMPTY_SET;
@@ -67,9 +106,10 @@ function render(root, cells, state, { selected = null, highlightConflicts = true
         cell.classList.toggle('sudoku-filled', digit !== 0);
         cell.classList.toggle('sudoku-conflict', conflicts.has(idx));
 
-        // Подсветка: сама клетка, её строка/столбец/бокс и все клетки с той же цифрой.
+        // Подсветка: сама клетка и все клетки с той же цифрой. Строку/столбец/бокс
+        // выбранной клетки не подсвечиваем — сплошная заливка трёх юнитов забивает
+        // доску сильнее, чем помогает читать её.
         cell.classList.toggle('sudoku-selected', idx === selected);
-        cell.classList.toggle('sudoku-peer', selected !== null && idx !== selected && isPeer(idx, selected));
         cell.classList.toggle(
             'sudoku-same',
             selectedValue !== 0 && idx !== selected && digit === selectedValue,
@@ -87,10 +127,6 @@ function render(root, cells, state, { selected = null, highlightConflicts = true
 }
 
 const EMPTY_SET = new Set();
-
-function isPeer(a, b) {
-    return ROW_OF[a] === ROW_OF[b] || COL_OF[a] === COL_OF[b] || BOX_OF[a] === BOX_OF[b];
-}
 
 // Подпись для скринридера: «строка 3, столбец 5, подсказка 7» / «пусто».
 function describeCell(state, idx) {

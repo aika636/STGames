@@ -13,6 +13,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
     difficulty: 'medium',
     // Подсвечивать клетки, конфликтующие по строке/столбцу/боксу.
     highlightConflicts: true,
+    // Подсвечивать цифры, не совпадающие с решением. По умолчанию выключено: это
+    // подсказка от игры, а не свойство доски — конфликт игрок может увидеть сам,
+    // а ошибку в непротиворечивой позиции — нет.
+    highlightMistakes: false,
     // Убирать цифру из заметок соседних клеток, когда она проставлена как значение.
     autoCleanNotes: true,
     showTimer: true,
@@ -81,6 +85,7 @@ export async function initSettingsUI(onSettingsChanged) {
     });
 
     bindCheckbox('#sudoku_highlight_conflicts', 'highlightConflicts');
+    bindCheckbox('#sudoku_highlight_mistakes', 'highlightMistakes');
     bindCheckbox('#sudoku_auto_clean_notes', 'autoCleanNotes');
     bindCheckbox('#sudoku_show_timer', 'showTimer');
 

@@ -168,6 +168,28 @@ test('render помечает конфликты и уважает настро�
     assert(!board.cells[idx].cell.classList.contains('sudoku-conflict'), 'подсветка отключается настройкой');
 });
 
+test('render помечает ошибочные цифры и уважает настройку', () => {
+    const state = newGame();
+    const board = createBoard();
+
+    // Заведомо неверная цифра: любая, кроме той, что стоит в решении.
+    const idx = state.values.findIndex((value) => value === 0);
+    const wrong = (state.solution[idx] % 9) + 1;
+    setValue(state, idx, wrong);
+
+    board.render(state, { highlightMistakes: true });
+    assert(board.cells[idx].cell.classList.contains('sudoku-mistake'), 'ошибка подсвечена');
+
+    board.render(state, { highlightMistakes: false });
+    assert(!board.cells[idx].cell.classList.contains('sudoku-mistake'), 'подсветка отключается настройкой');
+
+    // Верная цифра ошибкой не считается.
+    setValue(state, idx, wrong); // повторный ввод стирает
+    setValue(state, idx, state.solution[idx]);
+    board.render(state, { highlightMistakes: true });
+    assert(!board.cells[idx].cell.classList.contains('sudoku-mistake'), 'верная цифра не помечена');
+});
+
 test('render проставляет aria-label для скринридера', () => {
     const state = newGame();
     const board = createBoard();

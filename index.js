@@ -4,11 +4,18 @@ import { getCtx, getEventTypes } from './src/ctx.js';
 import { logError, logInfo } from './src/log.js';
 import { initSettingsUI } from './src/settings.js';
 import { initSlashCommand, initWandButton } from './src/ui/launcher.js';
+import { refresh } from './src/ui/modal.js';
 
 const VERSION = '0.3.0';
 
+// Подсветка и таймер читаются из настроек при каждой отрисовке — открытому окну
+// достаточно сказать «перерисуйся».
 function onSettingsChanged() {
-    // Фаза 4: пробросить изменения в открытую партию (подсветка, таймер).
+    try {
+        refresh();
+    } catch (err) {
+        logError('не удалось применить настройки к открытому окну', err);
+    }
 }
 
 // Панель настроек и кнопка в wand-меню появляются только после того, как ST отрисовал

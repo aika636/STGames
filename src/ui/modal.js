@@ -5,18 +5,28 @@
 // показывается собственный оверлей .sudoku-overlay — расширение не должно зависеть от
 // того, что внутренний API таверны останется прежним.
 
-import { getCtx } from '../ctx.js';
+import { getCtx, toast } from '../ctx.js';
 import { logError, logInfo } from '../log.js';
 import { getSettings, saveSettings } from '../settings.js';
 import { generatePuzzle } from '../core/generator.js';
 import {
+    canRedo,
+    canUndo,
+    clearCell,
+    complete,
     createGame,
     formatElapsed,
     getElapsedMs,
     pauseTimer,
+    redo,
+    remainingCounts,
+    setValue,
     startTimer,
+    toggleNote,
+    undo,
 } from '../core/game.js';
 import { createBoard } from './board.js';
+import { attachKeyboard, attachPointer, createNumpad, moveSelection } from './input.js';
 
 const LEVEL_LABELS = Object.freeze({
     easy: 'Лёгкий',
@@ -58,6 +68,7 @@ export async function openSudoku({ difficulty } = {}) {
 function closeSession() {
     if (!session) return;
     clearInterval(session.timerId);
+    session.detach?.();
     pauseTimer(session.state);
     session = null;
 }
@@ -95,20 +106,81 @@ function buildSession(level) {
     const status = document.createElement('div');
     status.className = 'sudoku-status';
 
-    root.append(header, board.root, status);
-
     const local = {
         root,
         board,
         timer,
         status,
+        pad: null,
         state: null,
         timerId: null,
+        // Выбранная клетка (индекс или null) и режим заметок — состояние ввода, а не
+        // партии: в сохранение (Фаза 4) оно не уходит.
+        selected: null,
+        notesMode: false,
+        givens: 0,
+        detach: null,
+    };
+
+    // --- Ходы. Каждый меняет состояние и перерисовывает окно; проверка победы — в одном
+    // --- месте, чтобы её нельзя было забыть в новой ветке ввода.
+
+    const play = (mutate) => {
+        if (!local.state || local.state.completedAt) return;
+        if (mutate() === false) return;
+        checkWin(local);
+        redraw(local);
+    };
+
+    const inputDigit = (digit) => play(() => {
+        if (local.selected === null) return false;
+        const settings = getSettings();
+        if (local.notesMode) return toggleNote(local.state, local.selected, digit);
+        return setValue(local.state, local.selected, digit, {
+            autoCleanNotes: settings.autoCleanNotes,
+        });
+    });
+
+    const handlers = {
+        onDigit: inputDigit,
+        onErase: () => play(() => local.selected !== null && clearCell(local.state, local.selected)),
+        onUndo: () => play(() => undo(local.state)),
+        onRedo: () => play(() => redo(local.state)),
+        onToggleNotes: () => {
+            local.notesMode = !local.notesMode;
+            redraw(local);
+        },
+        onMove: (delta) => {
+            local.selected = moveSelection(local.selected, delta);
+            redraw(local);
+        },
+    };
+
+    const pad = createNumpad(handlers);
+    local.pad = pad;
+
+    root.append(header, board.root, pad.root, status);
+
+    const select = (idx) => {
+        // Повторный клик по выбранной клетке снимает выделение — так проще убрать
+        // подсветку, не целясь в пустое место за доской.
+        local.selected = local.selected === idx ? null : idx;
+        redraw(local);
+    };
+
+    const detachPointer = attachPointer(board.root, select);
+    const detachKeyboard = attachKeyboard(root, handlers);
+    local.detach = () => {
+        detachPointer();
+        detachKeyboard();
     };
 
     const startNewGame = (requested) => {
         const generated = generatePuzzle({ difficulty: requested });
         local.state = createGame(generated);
+        local.givens = generated.givens;
+        local.selected = null;
+        local.notesMode = false;
         startTimer(local.state);
 
         if (!generated.exact) {
@@ -116,7 +188,7 @@ function buildSession(level) {
             // отдал ближайший. Молчать нельзя: игрок выбирал другую сложность.
             logInfo(`заказан уровень ${requested}, получен ${generated.level}`);
         }
-        redraw(local, generated);
+        redraw(local);
     };
 
     levelSelect.addEventListener('change', () => {
@@ -139,14 +211,41 @@ function buildSession(level) {
     return local;
 }
 
-function redraw(local, generated = null) {
+// Фиксирует победу ровно один раз: останавливает таймер и поздравляет игрока.
+function checkWin(local) {
+    if (!complete(local.state)) return;
+    local.selected = null;
+    toast('success', `Решено за ${formatElapsed(getElapsedMs(local.state))}`);
+    logInfo(`партия решена (${local.state.level})`);
+}
+
+function redraw(local) {
     const settings = getSettings();
-    local.board.render(local.state, { highlightConflicts: settings.highlightConflicts });
+    local.board.render(local.state, {
+        selected: local.selected,
+        highlightConflicts: settings.highlightConflicts,
+    });
+    local.board.root.classList.toggle('sudoku-board-notes', local.notesMode);
     updateTimer(local);
 
+    local.pad.update({
+        counts: remainingCounts(local.state),
+        notesMode: local.notesMode,
+        canUndo: canUndo(local.state),
+        canRedo: canRedo(local.state),
+    });
+
+    local.status.textContent = describeStatus(local);
+}
+
+function describeStatus(local) {
     const level = LEVEL_LABELS[local.state.level] ?? local.state.level;
-    const givens = generated ? generated.givens : local.state.puzzle.filter(Boolean).length;
-    local.status.textContent = `${level} · подсказок: ${givens}`;
+    if (local.state.completedAt) {
+        return `${level} · решено за ${formatElapsed(getElapsedMs(local.state))}`;
+    }
+    const parts = [`${level} · подсказок: ${local.givens}`];
+    if (local.notesMode) parts.push('режим заметок');
+    return parts.join(' · ');
 }
 
 function updateTimer(local) {

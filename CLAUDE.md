@@ -34,9 +34,8 @@ src/ctx.js       # getContext()/event_types-хелпер, toast()
 src/log.js       # логи [Sudoku], warnOnce()
 src/settings.js  # DEFAULT_SETTINGS, merge-on-load, биндинг settings.html
 src/core/        # rng / grid / solver / rate / generator / game — чистая логика, DOM-free
-src/ui/          # board / modal / launcher — DOM и связь с ST
+src/ui/          # board / modal / launcher / input — DOM и связь с ST
 tests/           # node-тесты; ядро — без зависимостей, UI — под jsdom (_harness.mjs)
-src/ui/          # modal / board / input — всё браузерное
 style.css        # стили, префикс .sudoku-
 settings.html    # панель в Extensions drawer
 docs/            # roadmap (фазы, риски) / development (состояние, команды) /
@@ -54,7 +53,8 @@ node tests/solver.test.mjs     # решатель + операции над се
 node tests/generator.test.mjs  # генератор и оценка сложности (100 головоломок на уровень)
 node tests/generator.test.mjs 10   # быстрый прогон: 10 на уровень
 node tests/game.test.mjs       # модель партии: ходы, пометки, undo/redo, таймер
-npm install --no-save jsdom && node tests/ui.test.mjs   # доска, окно, точки запуска
+npm install --no-save jsdom && node tests/ui.test.mjs      # доска, окно, точки запуска
+node tests/input.test.mjs      # ввод: клавиатура, numpad, заметки, undo, победа (jsdom)
 ./deploy.sh                    # залить на тестовый ST (тестовом стенде) + хардрелоад вкладки
 ```
 
@@ -75,6 +75,14 @@ candidates → пары) и «уровня по числу подсказок» 
 Партия (`game.js`) — три массива по 81 элементу (`puzzle` / `values` / `notes`-маски).
 Каждый ход пишется в историю как «клетки до → клетки после», поэтому undo/redo не зависят
 от типа операции и откатывают в том числе авточистку пометок у соседей.
+
+## UI (`src/ui/`)
+
+`input.js` не хранит состояние партии — он превращает события браузера в вызовы
+обработчиков; ход, выделение, режим заметок и проверка победы живут в `modal.js`.
+Слушатель клавиатуры висит на `document` в capture-фазе только при открытом окне и гасит
+**только обработанные** клавиши, иначе цифры уедут в чат. Раскладка клавиш и подводные
+камни — `docs/development.md`, раздел «Как устроен ввод».
 
 ## Связь с SillyTavern
 

@@ -5,7 +5,7 @@ import { logError, logInfo } from './src/log.js';
 import { initSettingsUI } from './src/settings.js';
 import { initSlashCommand, initWandButton } from './src/ui/launcher.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 function onSettingsChanged() {
     // Фаза 4: пробросить изменения в открытую партию (подсветка, таймер).

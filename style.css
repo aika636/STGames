@@ -168,6 +168,16 @@
     background-color: rgba(224, 83, 61, 0.18);
 }
 
+/* Ошибка (цифра не совпала с решением) — цветом и чертой под цифрой, а не заливкой:
+   ошибка часто совпадает с конфликтом, и две заливки поверх друг друга не читались бы. */
+.sudoku-cell.sudoku-mistake .sudoku-value {
+    color: var(--sudoku-danger);
+    text-decoration: underline;
+    text-decoration-color: var(--sudoku-danger);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.12em;
+}
+
 .sudoku-board-done {
     box-shadow: 0 0 12px var(--sudoku-accent);
 }

@@ -7,7 +7,7 @@
 // телефонах и убивала бы фокус клавиатуры.
 
 import { CELLS, COL_OF, DIGITS, ROW_OF, SIZE } from '../core/grid.js';
-import { getConflicts, hasNote, isGiven } from '../core/game.js';
+import { getConflicts, getMistakes, hasNote, isGiven } from '../core/game.js';
 
 export function createBoard() {
     const root = document.createElement('div');
@@ -92,9 +92,17 @@ export function createRemainingCounter() {
     return { root, items, update };
 }
 
-// selected — индекс выбранной клетки или null. highlightConflicts берётся из настроек.
-function render(root, cells, state, { selected = null, highlightConflicts = true } = {}) {
+// selected — индекс выбранной клетки или null. Оба флага подсветки берутся из настроек.
+// highlightMistakes сверяет доску с решением, поэтому подсвечивает и ошибки, которые
+// пока ни с чем не конфликтуют; подсказки в него не попадают — они всегда верны.
+function render(
+    root,
+    cells,
+    state,
+    { selected = null, highlightConflicts = true, highlightMistakes = false } = {},
+) {
     const conflicts = highlightConflicts ? getConflicts(state) : EMPTY_SET;
+    const mistakes = highlightMistakes ? getMistakes(state) : EMPTY_SET;
     const selectedValue = selected === null ? 0 : state.values[selected];
 
     for (let idx = 0; idx < CELLS; idx++) {
@@ -105,6 +113,7 @@ function render(root, cells, state, { selected = null, highlightConflicts = true
         cell.classList.toggle('sudoku-given', isGiven(state, idx));
         cell.classList.toggle('sudoku-filled', digit !== 0);
         cell.classList.toggle('sudoku-conflict', conflicts.has(idx));
+        cell.classList.toggle('sudoku-mistake', mistakes.has(idx));
 
         // Подсветка: сама клетка и все клетки с той же цифрой. Строку/столбец/бокс
         // выбранной клетки не подсвечиваем — сплошная заливка трёх юнитов забивает

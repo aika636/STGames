@@ -130,6 +130,30 @@ test('клик по клетке выделяет её, повторный — �
     assert(!cells()[idx].classList.contains('sudoku-selected'), 'повторный клик снял выделение');
 });
 
+// Попап ST при открытии сам ставит фокус на первый focusable-элемент окна — это select
+// уровня. Пока он не отдавал цифры игре, ввод молчал до первого клика по кнопке.
+test('цифра проходит, даже когда фокус на селекторе уровня', () => {
+    const levelSelect = root.querySelector('.sudoku-select');
+    const idx = emptyCell();
+    select(idx);
+
+    // Попап-заглушка окно в документ не вставляет, а событие с оторванного узла до
+    // document не всплывает — вешаем окно в body на время теста.
+    document.body.appendChild(root);
+
+    press('1', { target: levelSelect });
+    assertEqual(valueAt(idx), '1', 'цифра поставлена при фокусе на select');
+
+    // Стрелки остаются за самим select: ими игрок листает список уровней.
+    const arrow = press('ArrowDown', { target: levelSelect });
+    assert(!arrow.defaultPrevented, 'стрелка отдана селектору');
+
+    press('1', { target: levelSelect }); // повторный ввод стирает — доска чистая
+    assertEqual(valueAt(idx), '', 'клетка снова пуста');
+
+    root.remove();
+});
+
 test('цифра с клавиатуры попадает в выбранную клетку', () => {
     const idx = emptyCell();
     select(idx);

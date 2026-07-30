@@ -105,6 +105,12 @@ export function attachPointer(boardRoot, onSelect) {
 // Клавиша 'n' на ЙЦУКЕН даёт 'т' — раскладку игрок посреди партии не переключает.
 const NOTES_KEYS = new Set(['n', 'N', 'т', 'Т']);
 
+// Клавиши, которые остаются за <select> уровня: листание списка и его открытие/закрытие.
+const SELECT_KEYS = new Set([
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+    'Home', 'End', 'PageUp', 'PageDown', 'Enter', 'Escape', ' ', 'Tab',
+]);
+
 const MOVES = Object.freeze({
     ArrowLeft: -1,
     ArrowRight: 1,
@@ -120,9 +126,14 @@ export function attachKeyboard(root, handlers = {}) {
         if (event.altKey || event.metaKey) return;
 
         const target = event.target;
-        // Свои же контролы (select уровня) должны нормально работать стрелками.
-        if (root?.contains?.(target) && target.closest?.('select, input, textarea, [contenteditable="true"]')) {
-            return;
+        if (root?.contains?.(target)) {
+            // В текстовых полях не перехватываем ничего — там игрок печатает.
+            if (target.closest?.('input, textarea, [contenteditable="true"]')) return;
+            // А вот select уровня забирает фокус сам (ST фокусирует первый элемент
+            // попапа при открытии), и игрок этого не видит. Отдаём ему только клавиши
+            // навигации по списку — иначе цифры молча пропадали бы до первого клика
+            // по кнопке.
+            if (target.closest?.('select') && SELECT_KEYS.has(event.key)) return;
         }
 
         const handled = dispatch(event, handlers);

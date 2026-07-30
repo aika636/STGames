@@ -45,6 +45,12 @@ export function isOpen() {
     return session !== null;
 }
 
+// Перерисовывает открытое окно. Нужно, когда настройки поменяли прямо во время партии:
+// redraw() читает их сам, но без внешнего пинка ждал бы следующего хода.
+export function refresh() {
+    if (session?.state) redraw(session);
+}
+
 export async function openSudoku({ difficulty } = {}) {
     if (session) {
         logInfo('окно уже открыто');
@@ -55,6 +61,10 @@ export async function openSudoku({ difficulty } = {}) {
     const level = difficulty || settings.difficulty;
 
     session = buildSession(level);
+
+    // Попап ST раздаёт фокус уже после того, как вставит содержимое, поэтому свой
+    // фокус ставим следующим тиком — иначе его перебьёт select уровня.
+    setTimeout(() => session?.root.focus?.(), 0);
 
     try {
         await showPopup(session.root);
@@ -78,6 +88,9 @@ function closeSession() {
 function buildSession(level) {
     const root = document.createElement('div');
     root.className = 'sudoku-root';
+    // Фокусируемый корень: попап ST при открытии сам ставит фокус на первый подходящий
+    // элемент внутри, и без этого им оказывался select уровня.
+    root.tabIndex = -1;
 
     const header = document.createElement('div');
     header.className = 'sudoku-header';
@@ -168,6 +181,9 @@ function buildSession(level) {
         // Повторный клик по выбранной клетке снимает выделение — так проще убрать
         // подсветку, не целясь в пустое место за доской.
         local.selected = local.selected === idx ? null : idx;
+        // Клик по клетке фокус не переносит (mousedown отменён, чтобы не выделялся
+        // текст), поэтому уводим его на корень руками — иначе он останется на select.
+        root.focus?.();
         redraw(local);
     };
 
@@ -227,6 +243,7 @@ function redraw(local) {
     local.board.render(local.state, {
         selected: local.selected,
         highlightConflicts: settings.highlightConflicts,
+        highlightMistakes: settings.highlightMistakes,
     });
     local.board.root.classList.toggle('sudoku-board-notes', local.notesMode);
     updateTimer(local);

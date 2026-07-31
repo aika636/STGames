@@ -3,10 +3,21 @@
 
 import { getCtx } from './ctx.js';
 import { logError, logInfo } from './log.js';
+import { formatElapsed } from './core/game.js';
+import { isEmpty, readEntry, resetStats } from './core/stats.js';
 
 export const MODULE_NAME = 'Sudoku';
 
 export const DIFFICULTIES = Object.freeze(['easy', 'medium', 'hard', 'expert']);
+
+// Подписи уровней живут здесь, а не в modal.js: их показывают оба — и окно игры,
+// и таблица статистики в панели настроек.
+export const LEVEL_LABELS = Object.freeze({
+    easy: 'Лёгкий',
+    medium: 'Средний',
+    hard: 'Сложный',
+    expert: 'Эксперт',
+});
 
 export const DEFAULT_SETTINGS = Object.freeze({
     // Уровень, с которым стартует новая партия из кнопки запуска.
@@ -89,5 +100,63 @@ export async function initSettingsUI(onSettingsChanged) {
     bindCheckbox('#sudoku_auto_clean_notes', 'autoCleanNotes');
     bindCheckbox('#sudoku_show_timer', 'showTimer');
 
+    $('#sudoku_stats_reset').on('click', () => {
+        const s = getSettings();
+        resetStats(s.stats);
+        saveSettings();
+        renderStats();
+    });
+
+    renderStats();
+
     logInfo('панель настроек инициализирована');
+}
+
+// --- Статистика
+//
+// Панель настроек рисуется один раз при загрузке, а статистика меняется по ходу игры,
+// поэтому окно игры зовёт renderStats() после каждой засчитанной партии. Если панели
+// в DOM нет (settings.html не загрузился), функция молча ничего не делает.
+
+export function renderStats() {
+    const table = document.getElementById('sudoku_stats');
+    if (!table) return;
+
+    const stats = getSettings().stats;
+    const rows = DIFFICULTIES.map((difficulty) => {
+        const { played, solved, bestTimeMs } = readEntry(stats, difficulty);
+        return [
+            LEVEL_LABELS[difficulty] ?? difficulty,
+            String(played),
+            String(solved),
+            bestTimeMs === null ? '—' : formatElapsed(bestTimeMs),
+        ];
+    });
+
+    table.textContent = '';
+    table.appendChild(buildRow(['Уровень', 'Сыграно', 'Решено', 'Лучшее'], 'sudoku-stats-head'));
+    for (const row of rows) table.appendChild(buildRow(row));
+
+    // Кнопка сброса без единой партии бессмысленна и только сбивает с толку; вместо
+    // неё показывается пояснение, что именно считается сыгранной партией.
+    // Здесь голый DOM, а не jQuery: renderStats() зовёт и окно игры, и хочется, чтобы
+    // функция работала (и тестировалась) без предположений про глобальный $.
+    const empty = isEmpty(stats);
+    toggleVisible(document.getElementById('sudoku_stats_reset'), !empty);
+    toggleVisible(document.getElementById('sudoku_stats_hint'), empty);
+}
+
+function toggleVisible(element, visible) {
+    if (element) element.style.display = visible ? '' : 'none';
+}
+
+function buildRow(cells, className) {
+    const row = document.createElement('div');
+    row.className = className ? `sudoku-stats-row ${className}` : 'sudoku-stats-row';
+    for (const text of cells) {
+        const cell = document.createElement('span');
+        cell.textContent = text;
+        row.appendChild(cell);
+    }
+    return row;
 }

@@ -55,6 +55,7 @@ const status = () => root.querySelector('.sudoku-status').textContent;
 const remainingFor = (digit) => root.querySelectorAll('.sudoku-remaining-item')[digit - 1]
     .querySelector('.sudoku-remaining-left').textContent;
 const actionButton = (name) => root.querySelector(`.sudoku-pad-action[data-action="${name}"]`);
+const digitButton = (digit) => root.querySelector(`.sudoku-remaining-item[data-digit="${digit}"]`);
 
 function click(el) {
     el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -112,12 +113,10 @@ function emptyCell(n = 0) {
 
 console.log('input (jsdom)');
 
-test('окно собрано: счётчик оставшихся и кнопки действий', () => {
+test('окно собрано: ряд цифр и кнопки действий', () => {
     assert(root, 'попап получил корень игры');
-    assertEqual(root.querySelectorAll('.sudoku-remaining-item').length, 9, 'пунктов счётчика');
+    assertEqual(root.querySelectorAll('.sudoku-remaining-item').length, 9, 'кнопок ряда цифр');
     assertEqual(root.querySelectorAll('.sudoku-pad-action').length, 4, 'кнопок действий');
-    // Экранного ряда цифр в окне нет: цифры вводятся с клавиатуры.
-    assertEqual(root.querySelectorAll('.sudoku-pad-btn').length, 0, 'кнопок ввода цифр');
 });
 
 test('клик по клетке выделяет её, повторный — снимает', () => {
@@ -224,6 +223,27 @@ test('режим заметок пишет пометки, а не значен�
     assert(!actionButton('notes').classList.contains('sudoku-pad-on'), 'режим выключен кнопкой');
 });
 
+// Единственный способ ввода на телефоне: системной клавиатуры у попапа ST нет,
+// потому что в окне игры нет ни одного поля ввода.
+test('тап по цифре в ряду ставит её в выбранную клетку', () => {
+    const idx = emptyCell();
+    select(idx);
+
+    click(digitButton(2));
+    assertEqual(valueAt(idx), '2', 'цифра поставлена тапом');
+
+    click(digitButton(2));
+    assertEqual(valueAt(idx), '', 'повторный тап стёр цифру');
+
+    // Режим заметок работает и для тапа — иначе на телефоне пометок не поставить.
+    press('n');
+    click(digitButton(9));
+    const notes = cells()[idx].querySelectorAll('.sudoku-note');
+    assert(notes[8].classList.contains('sudoku-note-on'), 'тап в режиме заметок дал пометку');
+    click(digitButton(9));
+    press('n');
+});
+
 test('счётчик оставшихся цифр идёт за ходами', () => {
     const idx = emptyCell();
     select(idx);
@@ -308,6 +328,13 @@ test('доска, пройденная до конца с клавиатуры, 
     select(idx);
     press('1');
     assertEqual(valueAt(idx), String(solution[idx]), 'после победы ход не проходит');
+});
+
+test('победа попадает в статистику уровня', () => {
+    const stats = context.extensionSettings.Sudoku.stats.easy;
+    assertEqual(stats.played, 1, 'сыграно');
+    assertEqual(stats.solved, 1, 'решено');
+    assert(Number.isFinite(stats.bestTimeMs), `лучшее время записано: ${stats.bestTimeMs}`);
 });
 
 releasePopup();

@@ -53,16 +53,21 @@ export function createBoard() {
     };
 }
 
-// Строка «сколько каждой цифры осталось» под доской. Отдельный элемент, а не часть
-// панели действий: экранных кнопок ввода цифр в окне нет, а счётчик нужен.
-export function createRemainingCounter() {
+// Ряд цифр 1–9 под доской: он же счётчик оставшихся, он же экранный numpad.
+// Одним элементом, а не двумя: на телефоне физической клавиатуры нет, а держать
+// отдельно «сколько осталось» и «куда нажать» — лишняя строка на узком экране.
+// onDigit(digit) необязателен: без него ряд остаётся просто счётчиком.
+export function createRemainingCounter(onDigit) {
     const root = document.createElement('div');
     root.className = 'sudoku-remaining';
 
     const items = new Map();
     for (const digit of DIGITS) {
-        const item = document.createElement('span');
+        const item = document.createElement('button');
+        item.type = 'button';
         item.className = 'sudoku-remaining-item';
+        item.dataset.digit = String(digit);
+        item.setAttribute('aria-label', `Цифра ${digit}`);
 
         const label = document.createElement('span');
         label.className = 'sudoku-remaining-digit';
@@ -74,6 +79,19 @@ export function createRemainingCounter() {
         item.append(label, left);
         root.appendChild(item);
         items.set(digit, { item, left });
+    }
+
+    if (typeof onDigit === 'function') {
+        root.addEventListener('click', (event) => {
+            const button = event.target.closest?.('.sudoku-remaining-item');
+            if (!button || !root.contains(button)) return;
+            onDigit(Number(button.dataset.digit));
+        });
+        // Тап по цифре не должен уводить фокус с корня окна: иначе следующая клавиша
+        // с физической клавиатуры уйдёт кнопке, а не игре.
+        root.addEventListener('mousedown', (event) => {
+            if (event.target.closest?.('.sudoku-remaining-item')) event.preventDefault();
+        });
     }
 
     const update = (counts = {}) => {

@@ -7,19 +7,22 @@
 
 import { getCtx, toast } from '../ctx.js';
 import { logError, logInfo } from '../log.js';
-import { getSettings, saveSettings } from '../settings.js';
+import { LEVEL_LABELS, getSettings, renderStats, saveSettings } from '../settings.js';
 import { generatePuzzle } from '../core/generator.js';
+import { recordPlayed, recordSolved } from '../core/stats.js';
 import {
     canRedo,
     canUndo,
     clearCell,
     complete,
     createGame,
+    deserializeGame,
     formatElapsed,
     getElapsedMs,
     pauseTimer,
     redo,
     remainingCounts,
+    serializeGame,
     setValue,
     startTimer,
     toggleNote,
@@ -27,13 +30,6 @@ import {
 } from '../core/game.js';
 import { createBoard, createRemainingCounter } from './board.js';
 import { attachKeyboard, attachPointer, createControls, moveSelection } from './input.js';
-
-const LEVEL_LABELS = Object.freeze({
-    easy: 'Лёгкий',
-    medium: 'Средний',
-    hard: 'Сложный',
-    expert: 'Эксперт',
-});
 
 const TIMER_TICK_MS = 1000;
 
@@ -60,7 +56,9 @@ export async function openSudoku({ difficulty } = {}) {
     const settings = getSettings();
     const level = difficulty || settings.difficulty;
 
-    session = buildSession(level);
+    // Уровень указан явно (`/sudoku hard`) — игрок просит новую партию. Без аргумента
+    // (кнопка в wand-меню, голая /sudoku) продолжаем незаконченную, если она есть.
+    session = buildSession(level, { resume: !difficulty });
 
     // Попап ST раздаёт фокус уже после того, как вставит содержимое, поэтому свой
     // фокус ставим следующим тиком — иначе его перебьёт select уровня.
@@ -79,13 +77,76 @@ function closeSession() {
     if (!session) return;
     clearInterval(session.timerId);
     session.detach?.();
+    // Порядок важен: сначала останавливаем таймер, потом сохраняем — иначе в
+    // extensionSettings уедет партия с «бегущим» startedAt, и время между закрытием
+    // окна и следующим открытием засчиталось бы игроку.
     pauseTimer(session.state);
+    persist(session);
     session = null;
+}
+
+// --- Сохранение партии
+//
+// Пишем после каждого хода и при закрытии окна. Сохранение идёт в extensionSettings
+// через saveSettingsDebounced, поэтому серия быстрых ходов не превращается в серию
+// записей на диск. Ошибка сохранения не должна ронять партию — только лог.
+
+function persist(local) {
+    if (!local?.state) return;
+    try {
+        const settings = getSettings();
+        settings.savedGame = serializeGame(local.state);
+        saveSettings();
+    } catch (err) {
+        logError('не удалось сохранить партию', err);
+    }
+}
+
+// Возвращает незаконченную сохранённую партию или null. Решённую не восстанавливаем:
+// открывать окно с уже собранной доской бессмысленно, игрок ждёт новую.
+function restoreGame() {
+    try {
+        const saved = getSettings().savedGame;
+        const state = deserializeGame(saved);
+        if (!state || state.completedAt) return null;
+        return state;
+    } catch (err) {
+        logError('не удалось восстановить партию', err);
+        return null;
+    }
+}
+
+function countGivens(state) {
+    let givens = 0;
+    for (const value of state.puzzle) if (value) givens++;
+    return givens;
+}
+
+// --- Статистика по уровням
+//
+// Считается по заказанному уровню (`state.difficulty`), а не по оценённому генератором
+// (`state.level`): в панели настроек игрок ищет ту строку, которую сам выбрал в
+// селекторе, и не должен гадать, куда уехала партия из-за фолбэка генератора.
+//
+// Обновление статистики — побочная запись, а не ход: если оно упадёт, партия должна
+// продолжаться как ни в чём не бывало, поэтому всё обёрнуто в try/catch.
+
+function countGame(record) {
+    try {
+        const settings = getSettings();
+        const result = record(settings.stats);
+        saveSettings();
+        renderStats();
+        return result;
+    } catch (err) {
+        logError('не удалось обновить статистику', err);
+        return null;
+    }
 }
 
 // --- Сборка окна
 
-function buildSession(level) {
+function buildSession(level, { resume = false } = {}) {
     const root = document.createElement('div');
     root.className = 'sudoku-root';
     // Фокусируемый корень: попап ST при открытии сам ставит фокус на первый подходящий
@@ -144,6 +205,7 @@ function buildSession(level) {
         if (mutate() === false) return;
         checkWin(local);
         redraw(local);
+        persist(local);
     };
 
     const inputDigit = (digit) => play(() => {
@@ -171,7 +233,9 @@ function buildSession(level) {
     };
 
     const pad = createControls(handlers);
-    const remaining = createRemainingCounter();
+    // Ряд цифр под доской кликабельный: на телефоне это единственный способ ввода —
+    // системную клавиатуру попап ST не показывает (в окне нет полей ввода).
+    const remaining = createRemainingCounter(inputDigit);
     local.pad = pad;
     local.remaining = remaining;
 
@@ -194,20 +258,30 @@ function buildSession(level) {
         detachKeyboard();
     };
 
-    const startNewGame = (requested) => {
-        const generated = generatePuzzle({ difficulty: requested });
-        local.state = createGame(generated);
-        local.givens = generated.givens;
+    // Общий вход и для новой партии, и для восстановленной: одинаково сбрасывает
+    // состояние ввода, запускает таймер и сохраняется.
+    const startGame = (state, givens) => {
+        local.state = state;
+        local.givens = givens;
         local.selected = null;
         local.notesMode = false;
         startTimer(local.state);
+        persist(local);
+        redraw(local);
+    };
 
+    const startNewGame = (requested) => {
+        const generated = generatePuzzle({ difficulty: requested });
         if (!generated.exact) {
             // Генератор не смог попасть в заказанный уровень за отведённые попытки и
             // отдал ближайший. Молчать нельзя: игрок выбирал другую сложность.
             logInfo(`заказан уровень ${requested}, получен ${generated.level}`);
         }
-        redraw(local);
+        const state = createGame(generated);
+        // «Сыграно» растёт в момент создания доски: партия, брошенная на середине,
+        // тоже сыграна, иначе «решено» всегда совпадало бы со «сыграно».
+        countGame((stats) => recordPlayed(stats, state.difficulty));
+        startGame(state, generated.givens);
     };
 
     levelSelect.addEventListener('change', () => {
@@ -220,7 +294,16 @@ function buildSession(level) {
 
     newGameBtn.addEventListener('click', () => startNewGame(levelSelect.value));
 
-    startNewGame(level);
+    const restored = resume ? restoreGame() : null;
+    if (restored) {
+        // Селектор показывает уровень восстановленной партии, а не тот, что лежит
+        // в настройках: иначе подпись врала бы про доску на экране.
+        if (restored.difficulty in LEVEL_LABELS) levelSelect.value = restored.difficulty;
+        startGame(restored, countGivens(restored));
+        logInfo(`партия восстановлена (${restored.level})`);
+    } else {
+        startNewGame(level);
+    }
 
     local.timerId = setInterval(() => {
         if (!local.state) return;
@@ -230,12 +313,19 @@ function buildSession(level) {
     return local;
 }
 
-// Фиксирует победу ровно один раз: останавливает таймер и поздравляет игрока.
+// Фиксирует победу ровно один раз: останавливает таймер, пишет статистику и
+// поздравляет игрока. complete() идемпотентна, поэтому партия не может засчитаться дважды.
 function checkWin(local) {
     if (!complete(local.state)) return;
     local.selected = null;
-    toast('success', `Решено за ${formatElapsed(getElapsedMs(local.state))}`);
-    logInfo(`партия решена (${local.state.level})`);
+
+    const elapsed = getElapsedMs(local.state);
+    const difficulty = local.state.difficulty;
+    const isBest = countGame((stats) => recordSolved(stats, difficulty, elapsed));
+
+    const time = formatElapsed(elapsed);
+    toast('success', isBest ? `Решено за ${time} — лучшее время!` : `Решено за ${time}`);
+    logInfo(`партия решена (${local.state.level}, ${time}${isBest ? ', рекорд' : ''})`);
 }
 
 function redraw(local) {

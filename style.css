@@ -20,27 +20,62 @@
     min-width: 0;
 }
 
+.sudoku-settings .sudoku-stats-header {
+    justify-content: space-between;
+}
+
+/* Таблица статистики: четыре колонки, уровень по левому краю, числа — по правому,
+   чтобы разряды выстраивались друг под другом. */
+.sudoku-stats {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 2px 12px;
+    margin: 4px 0 8px;
+    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+}
+
+.sudoku-stats-row {
+    display: contents;
+}
+
+.sudoku-stats-row > span:not(:first-child) {
+    text-align: right;
+}
+
+.sudoku-stats-row.sudoku-stats-head > span {
+    opacity: 0.6;
+    font-size: 0.85em;
+}
+
 /* --- Окно игры --- */
 
 .sudoku-root {
-    /* Размер доски: квадрат по меньшей стороне экрана, но не больше 460px и не меньше
-       той ширины, при которой цифры перестают читаться. */
-    --sudoku-size: clamp(260px, min(78vmin, 460px), 460px);
+    /* Размер доски. Ограничений три: ширина экрана, его высота (под доской ещё ряд
+       цифр, кнопки и статус — им нужно около 150px) и потолок на десктопе, чтобы
+       окно не расползалось на пол-монитора. */
+    --sudoku-size: clamp(232px, min(86vw, 56vh), 380px);
     --sudoku-cell: calc(var(--sudoku-size) / 9);
 
     /* Тема таверны. Акцент и рамки берутся из переменных ST, а все заливки считаются
        от currentColor: на тёмной теме текст светлый и подсветка выходит светлой, на
        светлой — наоборот. Так окно подхватывает любую тему, а не только тёмные. */
     --sudoku-accent: var(--SmartThemeQuoteColor, currentColor);
-    --sudoku-line: var(--SmartThemeBorderColor, currentColor);
     --sudoku-danger: #e0533d;
-    --sudoku-tint-soft: color-mix(in srgb, currentColor 6%, transparent);
-    --sudoku-tint-strong: color-mix(in srgb, currentColor 16%, transparent);
+    --sudoku-tint-soft: color-mix(in srgb, currentColor 5%, transparent);
+    --sudoku-tint-strong: color-mix(in srgb, currentColor 14%, transparent);
+    /* Сетка рисуется двумя градациями одного цвета, а не толщиной линий: волосяные
+       линии внутри бокса и заметные — между боксами. Так доска читается структурно,
+       но не выглядит начерченной маркером. */
+    --sudoku-line: var(--SmartThemeBorderColor, currentColor);
+    --sudoku-line: color-mix(in srgb, currentColor 12%, transparent);
+    --sudoku-line-strong: var(--SmartThemeBorderColor, currentColor);
+    --sudoku-line-strong: color-mix(in srgb, currentColor 52%, transparent);
 
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
@@ -86,8 +121,8 @@
     width: var(--sudoku-size);
     height: var(--sudoku-size);
     max-width: 100%;
-    border: 2px solid var(--sudoku-line);
-    border-radius: 4px;
+    border: 1px solid var(--sudoku-line-strong);
+    border-radius: 10px;
     /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
        вторую строку и оставит первую. */
     background-color: var(--black30a);
@@ -104,10 +139,12 @@
     justify-content: center;
     border-top: 1px solid var(--sudoku-line);
     border-left: 1px solid var(--sudoku-line);
-    font-size: calc(var(--sudoku-cell) * 0.58);
+    font-size: calc(var(--sudoku-cell) * 0.5);
+    font-weight: 400;
     line-height: 1;
     cursor: pointer;
     user-select: none;
+    transition: background-color 0.12s ease;
     /* Клик по клетке не должен уводить фокус из окна игры (важно для клавиатуры). */
     -webkit-tap-highlight-color: transparent;
 }
@@ -121,22 +158,25 @@
     border-left: none;
 }
 
-/* Границы боксов: data-атрибуты проставляются в board.js. */
+/* Границы боксов: data-атрибуты проставляются в board.js. Толщина та же, отличается
+   только цвет — утолщение до 2px сдвигало клетки и делало сетку рубленой. */
 .sudoku-cell[data-box-left] {
-    border-left-width: 2px;
+    border-left-color: var(--sudoku-line-strong);
 }
 
 .sudoku-cell[data-box-top] {
-    border-top-width: 2px;
+    border-top-color: var(--sudoku-line-strong);
 }
 
 .sudoku-value {
     pointer-events: none;
 }
 
-/* Подсказки — жирные и приглушённые: их нельзя менять, и это должно быть видно сразу. */
+/* Подсказки отличаются от введённых цифр не жирностью, а цветом: жирный шрифт в
+   каждой второй клетке делал доску тяжёлой. Подсказка — обычный цвет текста,
+   ввод игрока — акцент темы (правило ниже). */
 .sudoku-cell.sudoku-given {
-    font-weight: 700;
+    font-weight: 500;
     cursor: default;
 }
 
@@ -152,12 +192,12 @@
     background-color: var(--sudoku-tint-strong);
 }
 
-/* Выбранная клетка — рамкой, а не сплошной заливкой акцентом: на светлых темах
-   светлый текст по светлому акценту переставал читаться. */
+/* Выбранная клетка — мягкая заливка акцентом и тонкая рамка, а не сплошной акцент:
+   на светлых темах светлый текст по светлому акценту переставал читаться. */
 .sudoku-cell.sudoku-selected {
     background-color: var(--white30a);
-    background-color: color-mix(in srgb, var(--sudoku-accent) 22%, transparent);
-    box-shadow: inset 0 0 0 2px var(--sudoku-accent);
+    background-color: color-mix(in srgb, var(--sudoku-accent) 18%, transparent);
+    box-shadow: inset 0 0 0 1px var(--sudoku-accent);
 }
 
 .sudoku-cell.sudoku-conflict .sudoku-value {
@@ -165,7 +205,7 @@
 }
 
 .sudoku-cell.sudoku-conflict {
-    background-color: rgba(224, 83, 61, 0.18);
+    background-color: rgba(224, 83, 61, 0.1);
 }
 
 /* Ошибка (цифра не совпала с решением) — цветом и чертой под цифрой, а не заливкой:
@@ -174,12 +214,14 @@
     color: var(--sudoku-danger);
     text-decoration: underline;
     text-decoration-color: var(--sudoku-danger);
-    text-decoration-thickness: 2px;
-    text-underline-offset: 0.12em;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.14em;
 }
 
 .sudoku-board-done {
-    box-shadow: 0 0 12px var(--sudoku-accent);
+    border-color: var(--sudoku-accent);
+    box-shadow: 0 0 0 1px var(--sudoku-accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sudoku-accent) 45%, transparent);
 }
 
 /* --- Пометки --- */
@@ -203,7 +245,7 @@
 }
 
 .sudoku-note.sudoku-note-on {
-    opacity: 0.65;
+    opacity: 0.55;
 }
 
 /* В заполненной клетке пометок нет — прячем сетку целиком, чтобы не мешала цифре. */
@@ -211,39 +253,68 @@
     display: none;
 }
 
-/* --- Счётчик оставшихся цифр и панель действий --- */
+/* --- Ряд цифр: экранный numpad и счётчик оставшихся в одном элементе --- */
 
 .sudoku-remaining {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 4px 10px;
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 4px;
     width: var(--sudoku-size);
     max-width: 100%;
-    font-size: 0.85em;
     font-variant-numeric: tabular-nums;
 }
 
 .sudoku-remaining-item {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 3px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    /* Минимум под палец: 40px — нижняя граница, при которой по цифре ещё можно
+       уверенно попасть на телефоне. */
+    min-height: 40px;
+    padding: 4px 0 3px;
+    /* Кнопка внутри чужого DOM: снимаем всё, что мог навесить ST или браузер. */
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--sudoku-line);
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.sudoku-remaining-item:hover {
+    border-color: var(--sudoku-line-strong);
+    background-color: var(--sudoku-tint-soft);
+}
+
+.sudoku-remaining-item:active {
+    background-color: var(--sudoku-tint-strong);
 }
 
 .sudoku-remaining-digit {
     color: var(--sudoku-accent);
-    font-weight: 600;
+    font-size: calc(var(--sudoku-cell) * 0.46);
+    line-height: 1;
 }
 
 .sudoku-remaining-left {
-    opacity: 0.7;
+    font-size: 0.65em;
+    line-height: 1;
+    opacity: 0.55;
 }
 
-/* Цифра выставлена вся — пункт гаснет, но остаётся на месте: строка не должна
+/* Цифра выставлена вся — кнопка гаснет, но остаётся на месте: ряд не должен
    дёргаться по ширине на каждом ходе. */
 .sudoku-remaining-item.sudoku-remaining-done {
-    opacity: 0.35;
+    opacity: 0.3;
 }
+
+/* --- Панель действий --- */
 
 .sudoku-pad-actions {
     display: flex;
@@ -317,7 +388,10 @@
 
 @media (max-width: 500px) {
     .sudoku-root {
-        --sudoku-size: min(94vw, 94vmin);
+        /* Доска не тянется во всю ширину: под ней должен помещаться ряд цифр,
+           иначе вводить на телефоне нечем. */
+        --sudoku-size: min(92vw, 58vh, 380px);
+        gap: 10px;
     }
 
     .sudoku-header {
@@ -328,5 +402,13 @@
     /* На узком экране подписи кнопок съедают ширину — остаются одни иконки. */
     .sudoku-pad-action-label {
         display: none;
+    }
+
+    .sudoku-remaining {
+        gap: 3px;
+    }
+
+    .sudoku-remaining-item {
+        min-height: 42px;
     }
 }

@@ -50,6 +50,8 @@ const { createBoard, createRemainingCounter } = await import('../src/ui/board.js
 const { openSudoku, isOpen } = await import('../src/ui/modal.js');
 const { initSlashCommand, initWandButton } = await import('../src/ui/launcher.js');
 const { createGame, remainingCounts, setValue, toggleNote } = await import('../src/core/game.js');
+const { getSettings, renderStats } = await import('../src/settings.js');
+const { recordPlayed, recordSolved, resetStats } = await import('../src/core/stats.js');
 const { generatePuzzle } = await import('../src/core/generator.js');
 const { mulberry32 } = await import('../src/core/rng.js');
 
@@ -298,6 +300,54 @@ test('без API слэш-команд расширение не падает', 
     delete context.SlashCommandParser;
     assertEqual(initSlashCommand(), false, 'вернулся false, исключения нет');
     context.SlashCommandParser = original;
+});
+
+// --- Таблица статистики в панели настроек. initSettingsUI() тянет settings.html через
+// --- $.get, поэтому проверяется только отрисовка — на вручную собранной разметке.
+
+test('renderStats без панели в DOM молча ничего не делает', () => {
+    // Окно игры зовёт renderStats() после каждой партии, а панель настроек могла
+    // не загрузиться (settings.html не отдался) — падать в этом месте нельзя.
+    renderStats();
+});
+
+test('renderStats рисует строку на каждый уровень и прячет сброс без партий', () => {
+    // Тесты выше открывали окно игры, а каждое открытие — это сыгранная партия.
+    resetStats(getSettings().stats);
+
+    document.body.insertAdjacentHTML(
+        'beforeend',
+        '<div id="sudoku_stats"></div><div id="sudoku_stats_reset"></div><small id="sudoku_stats_hint"></small>',
+    );
+
+    renderStats();
+
+    const rows = document.querySelectorAll('#sudoku_stats .sudoku-stats-row');
+    assertEqual(rows.length, 5, 'строк: шапка и четыре уровня');
+    assertEqual(rows[1].children[0].textContent, 'Лёгкий', 'подпись уровня');
+    assertEqual(rows[1].children[1].textContent, '0', 'сыграно');
+    assertEqual(rows[1].children[3].textContent, '—', 'лучшего времени нет');
+
+    assertEqual(document.getElementById('sudoku_stats_reset').style.display, 'none', 'сброс скрыт');
+    assertEqual(document.getElementById('sudoku_stats_hint').style.display, '', 'подсказка видна');
+});
+
+test('renderStats показывает счётчики и рекорд', () => {
+    const stats = getSettings().stats;
+    recordPlayed(stats, 'hard');
+    recordPlayed(stats, 'hard');
+    recordSolved(stats, 'hard', 125_000);
+
+    renderStats();
+
+    const row = document.querySelectorAll('#sudoku_stats .sudoku-stats-row')[3];
+    assertEqual(row.children[0].textContent, 'Сложный', 'уровень');
+    assertEqual(row.children[1].textContent, '2', 'сыграно');
+    assertEqual(row.children[2].textContent, '1', 'решено');
+    assertEqual(row.children[3].textContent, '02:05', 'лучшее время');
+
+    assertEqual(document.getElementById('sudoku_stats_reset').style.display, '', 'сброс показан');
+    assertEqual(document.getElementById('sudoku_stats_hint').style.display, 'none', 'подсказка скрыта');
 });
 
 report('ui');

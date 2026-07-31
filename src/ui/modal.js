@@ -116,12 +116,6 @@ function restoreGame() {
     }
 }
 
-function countGivens(state) {
-    let givens = 0;
-    for (const value of state.puzzle) if (value) givens++;
-    return givens;
-}
-
 // --- Статистика по уровням
 //
 // Считается по заказанному уровню (`state.difficulty`), а не по оценённому генератором
@@ -193,7 +187,6 @@ function buildSession(level, { resume = false } = {}) {
         // партии: в сохранение (Фаза 4) оно не уходит.
         selected: null,
         notesMode: false,
-        givens: 0,
         detach: null,
     };
 
@@ -260,9 +253,8 @@ function buildSession(level, { resume = false } = {}) {
 
     // Общий вход и для новой партии, и для восстановленной: одинаково сбрасывает
     // состояние ввода, запускает таймер и сохраняется.
-    const startGame = (state, givens) => {
+    const startGame = (state) => {
         local.state = state;
-        local.givens = givens;
         local.selected = null;
         local.notesMode = false;
         startTimer(local.state);
@@ -281,7 +273,7 @@ function buildSession(level, { resume = false } = {}) {
         // «Сыграно» растёт в момент создания доски: партия, брошенная на середине,
         // тоже сыграна, иначе «решено» всегда совпадало бы со «сыграно».
         countGame((stats) => recordPlayed(stats, state.difficulty));
-        startGame(state, generated.givens);
+        startGame(state);
     };
 
     levelSelect.addEventListener('change', () => {
@@ -299,7 +291,7 @@ function buildSession(level, { resume = false } = {}) {
         // Селектор показывает уровень восстановленной партии, а не тот, что лежит
         // в настройках: иначе подпись врала бы про доску на экране.
         if (restored.difficulty in LEVEL_LABELS) levelSelect.value = restored.difficulty;
-        startGame(restored, countGivens(restored));
+        startGame(restored);
         logInfo(`партия восстановлена (${restored.level})`);
     } else {
         startNewGame(level);
@@ -353,9 +345,10 @@ function describeStatus(local) {
     if (local.state.completedAt) {
         return `${level} · решено за ${formatElapsed(getElapsedMs(local.state))}`;
     }
-    const parts = [`${level} · подсказок: ${local.givens}`];
-    if (local.notesMode) parts.push('режим заметок');
-    return parts.join(' · ');
+    // Число подсказок в строке не показывается: сложность у нас определяется техникой,
+    // которой хватает для решения, а не количеством заполненных клеток, — игроку это
+    // число ничего не говорило.
+    return local.notesMode ? `${level} · режим заметок` : level;
 }
 
 function updateTimer(local) {

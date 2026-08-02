@@ -92,7 +92,7 @@
 2. Вставьте ссылку на этот репозиторий:
 
    ```
-   https://github.com/aika636/Sudoku
+   https://github.com/aika636/STGames
    ```
 
 3. Нажмите **Install** и перезагрузите вкладку.

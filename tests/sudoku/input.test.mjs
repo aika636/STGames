@@ -9,7 +9,7 @@
 // Запуск: node tests/input.test.mjs
 
 import { JSDOM } from 'jsdom';
-import { assert, assertEqual, report, test } from './_harness.mjs';
+import { assert, assertEqual, report, test } from '../_harness.mjs';
 
 const dom = new JSDOM(
     '<!doctype html><html><body><div id="extensionsMenu"></div><textarea id="send_textarea"></textarea></body></html>',
@@ -30,9 +30,14 @@ const context = {
 
 globalThis.SillyTavern = { getContext: () => context };
 
-const { openSudoku } = await import('../src/ui/modal.js');
-const { moveSelection } = await import('../src/ui/input.js');
-const { solve } = await import('../src/core/solver.js');
+const { clear, register } = await import('../../src/registry.js');
+const sudokuGame = (await import('../../src/games/sudoku/index.js')).default;
+const { openShell } = await import('../../src/shell/modal.js');
+const { moveSelection } = await import('../../src/games/sudoku/ui/input.js');
+const { solve } = await import('../../src/games/sudoku/core/solver.js');
+
+clear();
+register(sudokuGame);
 
 // --- Одна открытая партия на весь файл: сессия в modal.js единственная, и держать
 // --- попап «висящим» дешевле, чем переоткрывать его в каждом тесте.
@@ -46,8 +51,8 @@ context.callGenericPopup = (content) => {
     return held;
 };
 
-const opened = openSudoku({ difficulty: 'easy' });
-await Promise.resolve(); // даём openSudoku дойти до showPopup
+const opened = openShell({ gameId: 'sudoku', args: { difficulty: 'easy' } });
+await Promise.resolve(); // даём openShell дойти до showPopup
 
 const cells = () => Array.from(root.querySelectorAll('.sudoku-cell'));
 const valueAt = (idx) => cells()[idx].querySelector('.sudoku-value').textContent;
@@ -331,7 +336,7 @@ test('доска, пройденная до конца с клавиатуры, 
 });
 
 test('победа попадает в статистику уровня', () => {
-    const stats = context.extensionSettings.Sudoku.stats.easy;
+    const stats = context.extensionSettings.STGames.games.sudoku.stats.easy;
     assertEqual(stats.played, 1, 'сыграно');
     assertEqual(stats.solved, 1, 'решено');
     assert(Number.isFinite(stats.bestTimeMs), `лучшее время записано: ${stats.bestTimeMs}`);

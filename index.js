@@ -1,12 +1,15 @@
-// Точка входа Sudoku. Тонкий файл: только связывает модули, вся логика — в src/.
+// Точка входа STGames. Тонкий файл: только связывает модули, вся логика — в src/.
 
 import { getCtx, getEventTypes } from './src/ctx.js';
 import { logError, logInfo } from './src/log.js';
-import { initSettingsUI } from './src/settings.js';
-import { initSlashCommand, initWandButton } from './src/ui/launcher.js';
-import { refresh } from './src/ui/modal.js';
+import { register } from './src/registry.js';
+import sudokuGame from './src/games/sudoku/index.js';
+import snakeGame from './src/games/snake/index.js';
+import { initSettingsUI } from './src/shell/settings-ui.js';
+import { initSlashCommands, initWandButton } from './src/shell/launcher.js';
+import { refresh } from './src/shell/modal.js';
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 
 // Подсветка и таймер читаются из настроек при каждой отрисовке — открытому окну
 // достаточно сказать «перерисуйся».
@@ -18,9 +21,9 @@ function onSettingsChanged() {
     }
 }
 
-// Панель настроек и кнопка в wand-меню появляются только после того, как ST отрисовал
-// свой интерфейс, — это APP_READY. Если событие уже прошло (или его имени нет в этой
-// версии ST), страхуемся отложенной попыткой, чтобы не потерять UI совсем.
+// Панель настроек, кнопка в wand-меню и слэш-команды появляются только после того, как
+// ST отрисовал свой интерфейс, — это APP_READY. Если событие уже прошло (или его имени
+// нет в этой версии ST), страхуемся отложенной попыткой, чтобы не потерять UI совсем.
 function initUI() {
     let done = false;
     const run = async () => {
@@ -40,9 +43,9 @@ function initUI() {
         }
 
         try {
-            initSlashCommand();
+            initSlashCommands();
         } catch (err) {
-            logError('initSlashCommand упал', err);
+            logError('initSlashCommands упал', err);
         }
     };
 
@@ -56,6 +59,9 @@ function initUI() {
 
     setTimeout(run, 3000);
 }
+
+register(sudokuGame);
+register(snakeGame);
 
 jQuery(async () => {
     try {

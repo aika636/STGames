@@ -5,7 +5,7 @@
 // Запуск: node tests/persist.test.mjs
 
 import { JSDOM } from 'jsdom';
-import { assert, assertEqual, report, test } from './_harness.mjs';
+import { assert, assertEqual, report, test } from '../_harness.mjs';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
 
@@ -25,7 +25,12 @@ const context = {
 
 globalThis.SillyTavern = { getContext: () => context };
 
-const { openSudoku } = await import('../src/ui/modal.js');
+const { clear, register } = await import('../../src/registry.js');
+const sudokuGame = (await import('../../src/games/sudoku/index.js')).default;
+const { openShell } = await import('../../src/shell/modal.js');
+
+clear();
+register(sudokuGame);
 
 // Каждая сессия живёт внутри одного вызова session(): открыли окно, поработали
 // с корнем, закрыли попап. Так же, как это делает игрок.
@@ -39,7 +44,7 @@ async function session(body, options = {}) {
         return held;
     };
 
-    const opened = openSudoku(options);
+    const opened = openShell({ gameId: 'sudoku', args: options });
     await Promise.resolve();
 
     const result = await body(root);
@@ -49,8 +54,8 @@ async function session(body, options = {}) {
     return result;
 }
 
-const saved = () => context.extensionSettings.Sudoku.savedGame;
-const stats = () => context.extensionSettings.Sudoku.stats;
+const saved = () => context.extensionSettings.STGames.games.sudoku.savedGame;
+const stats = () => context.extensionSettings.STGames.games.sudoku.stats;
 
 const cellsOf = (root) => Array.from(root.querySelectorAll('.sudoku-cell'));
 const valuesOf = (root) => cellsOf(root).map((cell) => cell.querySelector('.sudoku-value').textContent);
@@ -142,7 +147,7 @@ await session(async (root) => {
 
 // --- Решённая партия не восстанавливается: открывать окно с готовой доской незачем.
 
-context.extensionSettings.Sudoku.savedGame.completedAt = Date.now();
+context.extensionSettings.STGames.games.sudoku.savedGame.completedAt = Date.now();
 const solvedPuzzle = saved().puzzle.join();
 
 await session(async () => {
@@ -154,7 +159,7 @@ await session(async () => {
 
 // --- Битое сохранение не должно ломать открытие окна.
 
-context.extensionSettings.Sudoku.savedGame = { version: 1, puzzle: [1, 2, 3] };
+context.extensionSettings.STGames.games.sudoku.savedGame = { version: 1, puzzle: [1, 2, 3] };
 
 await session(async (root) => {
     test('битое сохранение игнорируется, окно открывается', () => {

@@ -5,18 +5,18 @@
 // каждая головоломка валидна, имеет ровно одно решение, попадает в заказанный уровень и
 // укладывается в бюджет времени.
 
-import { CELLS, countGivens, formatGrid, isSolved, parseGrid } from '../src/core/grid.js';
-import { hasUniqueSolution, solve } from '../src/core/solver.js';
-import { LEVELS, rate } from '../src/core/rate.js';
+import { CELLS, countGivens, formatGrid, isSolved, parseGrid } from '../../src/games/sudoku/core/grid.js';
+import { hasUniqueSolution, solve } from '../../src/games/sudoku/core/solver.js';
+import { LEVELS, rate } from '../../src/games/sudoku/core/rate.js';
 import {
     DIFFICULTY_TARGETS,
     digHoles,
     generatePuzzle,
     generateSolution,
     isConsistent,
-} from '../src/core/generator.js';
-import { mulberry32 } from '../src/core/rng.js';
-import { assert, assertEqual, report, test } from './_harness.mjs';
+} from '../../src/games/sudoku/core/generator.js';
+import { mulberry32 } from '../../src/games/sudoku/core/rng.js';
+import { assert, assertEqual, report, test } from '../_harness.mjs';
 
 const PUZZLES_PER_LEVEL = Number(process.argv[2]) || 100;
 const TIME_BUDGET_MS = 100; // на одну головоломку, см. docs/roadmap.md, Фаза 1

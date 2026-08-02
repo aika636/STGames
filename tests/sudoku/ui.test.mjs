@@ -7,7 +7,7 @@
 // Запуск: node tests/ui.test.mjs
 
 import { JSDOM } from 'jsdom';
-import { assert, assertEqual, report, test } from './_harness.mjs';
+import { assert, assertEqual, report, test } from '../_harness.mjs';
 
 // --- Окружение браузера и заглушка SillyTavern. Ставится до импорта модулей UI:
 // --- src/ctx.js зовёт глобальный SillyTavern.getContext() в каждой функции.
@@ -46,14 +46,19 @@ const context = {
 
 globalThis.SillyTavern = { getContext: () => context };
 
-const { createBoard, createRemainingCounter } = await import('../src/ui/board.js');
-const { openSudoku, isOpen } = await import('../src/ui/modal.js');
-const { initSlashCommand, initWandButton } = await import('../src/ui/launcher.js');
-const { createGame, remainingCounts, setValue, toggleNote } = await import('../src/core/game.js');
-const { getSettings, renderStats } = await import('../src/settings.js');
-const { recordPlayed, recordSolved, resetStats } = await import('../src/core/stats.js');
-const { generatePuzzle } = await import('../src/core/generator.js');
-const { mulberry32 } = await import('../src/core/rng.js');
+const { createBoard, createRemainingCounter } = await import('../../src/games/sudoku/ui/board.js');
+const { openShell, isOpen } = await import('../../src/shell/modal.js');
+const { initSlashCommands, initWandButton } = await import('../../src/shell/launcher.js');
+const { clear, register } = await import('../../src/registry.js');
+const sudokuGame = (await import('../../src/games/sudoku/index.js')).default;
+const { createGame, remainingCounts, setValue, toggleNote } = await import('../../src/games/sudoku/core/game.js');
+const { getSudokuSettings, renderSudokuStats } = await import('../../src/games/sudoku/settings.js');
+const { recordPlayed, recordSolved, resetStats } = await import('../../src/games/sudoku/core/stats.js');
+const { generatePuzzle } = await import('../../src/games/sudoku/core/generator.js');
+const { mulberry32 } = await import('../../src/games/sudoku/core/rng.js');
+
+clear();
+register(sudokuGame);
 
 function newGame(difficulty = 'easy', seed = 5) {
     return createGame(generatePuzzle({ difficulty, rng: mulberry32(seed) }));
@@ -200,16 +205,16 @@ test('render проставляет aria-label для скринридера', (
     assert(/строка 1, столбец 1/.test(label), `подпись клетки: ${label}`);
 });
 
-await test('openSudoku строит окно и отдаёт его в попап ST', async () => {
+await test('openShell строит окно игры и отдаёт его в попап ST', async () => {
     popupCalls.length = 0;
-    await openSudoku({ difficulty: 'easy' });
+    await openShell({ gameId: 'sudoku', args: { difficulty: 'easy' } });
 
     assertEqual(popupCalls.length, 1, 'попап показан один раз');
     const { content, type, options } = popupCalls[0];
     assertEqual(type, 4, 'тип попапа — DISPLAY');
     assertEqual(options.allowVerticalScrolling, true, 'вертикальная прокрутка разрешена');
 
-    assert(content.classList.contains('sudoku-root'), 'в попап ушёл корень игры');
+    assert(content.classList.contains('stg-root'), 'в попап ушёл корень оболочки');
     assertEqual(content.querySelectorAll('.sudoku-cell').length, 81, 'доска построена');
     assert(content.querySelector('.sudoku-timer'), 'таймер на месте');
     assert(content.querySelector('.sudoku-select'), 'селектор уровня на месте');
@@ -220,7 +225,7 @@ await test('openSudoku строит окно и отдаёт его в попа�
 
 await test('после закрытия попапа сессия освобождается', async () => {
     assertEqual(isOpen(), false, 'сессии нет');
-    await openSudoku({ difficulty: 'easy' });
+    await openShell({ gameId: 'sudoku', args: { difficulty: 'easy' } });
     assertEqual(isOpen(), false, 'сессия закрыта вместе с попапом');
 });
 
@@ -236,8 +241,8 @@ await test('окно не открывается дважды', async () => {
         return held;
     };
 
-    const first = openSudoku({ difficulty: 'easy' });
-    await openSudoku({ difficulty: 'easy' }); // второй вызов при открытом окне
+    const first = openShell({ gameId: 'sudoku', args: { difficulty: 'easy' } });
+    await openShell({ gameId: 'sudoku', args: { difficulty: 'easy' } }); // второй вызов при открытом окне
     assertEqual(popupCalls.length, 1, 'второй попап не открылся');
 
     release();
@@ -250,8 +255,8 @@ await test('без callGenericPopup показывается собственн�
     const original = context.callGenericPopup;
     delete context.callGenericPopup;
 
-    const promise = openSudoku({ difficulty: 'easy' });
-    const overlay = document.querySelector('.sudoku-overlay');
+    const promise = openShell({ gameId: 'sudoku', args: { difficulty: 'easy' } });
+    const overlay = document.querySelector('.stg-overlay');
     assert(overlay, 'оверлей создан');
     assertEqual(overlay.querySelectorAll('.sudoku-cell').length, 81, 'доска внутри оверлея');
 
@@ -259,7 +264,7 @@ await test('без callGenericPopup показывается собственн�
     document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await promise;
 
-    assert(!document.querySelector('.sudoku-overlay'), 'оверлей убран из DOM');
+    assert(!document.querySelector('.stg-overlay'), 'оверлей убран из DOM');
     assertEqual(isOpen(), false, 'сессия закрыта');
     context.callGenericPopup = original;
 });
@@ -267,29 +272,31 @@ await test('без callGenericPopup показывается собственн�
 test('initWandButton добавляет пункт в меню и не дублирует его', () => {
     assert(initWandButton(), 'кнопка добавлена');
     assert(initWandButton(), 'повторный вызов безопасен');
-    assertEqual(document.querySelectorAll('#sudoku_wand_button').length, 1, 'кнопок в меню');
+    assertEqual(document.querySelectorAll('#stgames_wand_button').length, 1, 'кнопок в меню');
 
-    const button = document.getElementById('sudoku_wand_button');
+    const button = document.getElementById('stgames_wand_button');
     assert(button.querySelector('.extensionsMenuExtensionButton'), 'иконка на месте');
-    assertEqual(button.textContent.trim(), 'Судоку', 'подпись кнопки');
+    assertEqual(button.textContent.trim(), 'Мини-игры', 'подпись кнопки');
 });
 
-test('initSlashCommand регистрирует /sudoku', () => {
+test('initSlashCommands регистрирует /stgames и /sudoku', () => {
     slashCommands.length = 0;
-    assert(initSlashCommand(), 'команда зарегистрирована');
-    assertEqual(slashCommands.length, 1, 'команд добавлено');
-    assertEqual(slashCommands[0].name, 'sudoku', 'имя команды');
-    assert(typeof slashCommands[0].callback === 'function', 'колбэк на месте');
+    assert(initSlashCommands(), 'команды зарегистрированы');
+    assertEqual(slashCommands.length, 2, 'команд добавлено');
+    assertEqual(slashCommands[0].name, 'stgames', 'имя первой команды');
+    assertEqual(slashCommands[1].name, 'sudoku', 'имя второй команды');
+    assert(typeof slashCommands[1].callback === 'function', 'колбэк на месте');
 });
 
-test('initSlashCommand падает на устаревший API, если парсера нет', () => {
+test('initSlashCommands падает на устаревший API, если парсера нет', () => {
     const original = context.SlashCommandParser;
     const legacy = [];
     delete context.SlashCommandParser;
     context.registerSlashCommand = (name) => legacy.push(name);
 
-    assert(initSlashCommand(), 'команда зарегистрирована через устаревший API');
-    assertEqual(legacy[0], 'sudoku', 'имя команды');
+    assert(initSlashCommands(), 'команды зарегистрированы через устаревший API');
+    assertEqual(legacy[0], 'stgames', 'имя первой команды');
+    assertEqual(legacy[1], 'sudoku', 'имя второй команды');
 
     context.SlashCommandParser = original;
     delete context.registerSlashCommand;
@@ -298,56 +305,55 @@ test('initSlashCommand падает на устаревший API, если па
 test('без API слэш-команд расширение не падает', () => {
     const original = context.SlashCommandParser;
     delete context.SlashCommandParser;
-    assertEqual(initSlashCommand(), false, 'вернулся false, исключения нет');
+    assertEqual(initSlashCommands(), false, 'вернулся false, исключения нет');
     context.SlashCommandParser = original;
 });
 
 // --- Таблица статистики в панели настроек. initSettingsUI() тянет settings.html через
-// --- $.get, поэтому проверяется только отрисовка — на вручную собранной разметке.
+// --- $.get, поэтому проверяется только отрисовка — на вручную собранном контейнере.
 
-test('renderStats без панели в DOM молча ничего не делает', () => {
-    // Окно игры зовёт renderStats() после каждой партии, а панель настроек могла
+test('renderSudokuStats без контейнера молча ничего не делает', () => {
+    // Окно игры зовёт renderAllStats() после каждой партии, а панель настроек могла
     // не загрузиться (settings.html не отдался) — падать в этом месте нельзя.
-    renderStats();
+    renderSudokuStats(null);
 });
 
-test('renderStats рисует строку на каждый уровень и прячет сброс без партий', () => {
+test('renderSudokuStats рисует строку на каждый уровень и прячет сброс без партий', () => {
     // Тесты выше открывали окно игры, а каждое открытие — это сыгранная партия.
-    resetStats(getSettings().stats);
+    resetStats(getSudokuSettings().stats);
 
-    document.body.insertAdjacentHTML(
-        'beforeend',
-        '<div id="sudoku_stats"></div><div id="sudoku_stats_reset"></div><small id="sudoku_stats_hint"></small>',
-    );
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    renderSudokuStats(container);
 
-    renderStats();
-
-    const rows = document.querySelectorAll('#sudoku_stats .sudoku-stats-row');
+    const rows = container.querySelectorAll('.sudoku-stats-row');
     assertEqual(rows.length, 5, 'строк: шапка и четыре уровня');
     assertEqual(rows[1].children[0].textContent, 'Лёгкий', 'подпись уровня');
     assertEqual(rows[1].children[1].textContent, '0', 'сыграно');
     assertEqual(rows[1].children[3].textContent, '—', 'лучшего времени нет');
 
-    assertEqual(document.getElementById('sudoku_stats_reset').style.display, 'none', 'сброс скрыт');
-    assertEqual(document.getElementById('sudoku_stats_hint').style.display, '', 'подсказка видна');
+    assertEqual(container.querySelector('#sudoku_stats_reset').style.display, 'none', 'сброс скрыт');
+    assertEqual(container.querySelector('#sudoku_stats_hint').style.display, '', 'подсказка видна');
 });
 
-test('renderStats показывает счётчики и рекорд', () => {
-    const stats = getSettings().stats;
+test('renderSudokuStats показывает счётчики и рекорд', () => {
+    const stats = getSudokuSettings().stats;
     recordPlayed(stats, 'hard');
     recordPlayed(stats, 'hard');
     recordSolved(stats, 'hard', 125_000);
 
-    renderStats();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    renderSudokuStats(container);
 
-    const row = document.querySelectorAll('#sudoku_stats .sudoku-stats-row')[3];
+    const row = container.querySelectorAll('.sudoku-stats-row')[3];
     assertEqual(row.children[0].textContent, 'Сложный', 'уровень');
     assertEqual(row.children[1].textContent, '2', 'сыграно');
     assertEqual(row.children[2].textContent, '1', 'решено');
     assertEqual(row.children[3].textContent, '02:05', 'лучшее время');
 
-    assertEqual(document.getElementById('sudoku_stats_reset').style.display, '', 'сброс показан');
-    assertEqual(document.getElementById('sudoku_stats_hint').style.display, 'none', 'подсказка скрыта');
+    assertEqual(container.querySelector('#sudoku_stats_reset').style.display, '', 'сброс показан');
+    assertEqual(container.querySelector('#sudoku_stats_hint').style.display, 'none', 'подсказка скрыта');
 });
 
 report('ui');

@@ -10,10 +10,10 @@ import {
     isSolved,
     isValidPlacement,
     parseGrid,
-} from '../src/core/grid.js';
-import { countSolutions, findSolutions, hasUniqueSolution, solve } from '../src/core/solver.js';
-import { mulberry32 } from '../src/core/rng.js';
-import { assert, assertEqual, report, test } from './_harness.mjs';
+} from '../../src/games/sudoku/core/grid.js';
+import { countSolutions, findSolutions, hasUniqueSolution, solve } from '../../src/games/sudoku/core/solver.js';
+import { mulberry32 } from '../../src/games/sudoku/core/rng.js';
+import { assert, assertEqual, report, test } from '../_harness.mjs';
 
 // Классический пример головоломки (Wikipedia, «Sudoku»). Решение не захардкожено —
 // тест проверяет свойства решения, а не конкретную строку.

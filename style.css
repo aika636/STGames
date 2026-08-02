@@ -1,26 +1,27 @@
-/* Стили расширения Sudoku. Всё под префиксом .sudoku-, никаких голых селекторов тегов:
-   расширение живёт внутри чужого DOM и не должно задевать вёрстку SillyTavern.
-   Цвета берутся из CSS-переменных темы ST, чтобы доска не выбивалась из оформления. */
+/* Стили расширения STGames. Всё под префиксом .stg- (оболочка и хаб), .sudoku- и
+   .snake- (игры), никаких голых селекторов тегов: расширение живёт внутри чужого DOM
+   и не должно задевать вёрстку SillyTavern. Цвета берутся из CSS-переменных темы ST,
+   чтобы игры не выбивались из оформления. */
 
 /* --- Панель настроек --- */
 
-.sudoku-settings .sudoku-row {
+.stg-settings .stg-row {
     display: flex;
     align-items: center;
     gap: 8px;
     margin: 6px 0;
 }
 
-.sudoku-settings .sudoku-row > label:not(.checkbox_label) {
+.stg-settings .stg-row > label:not(.checkbox_label) {
     flex: 0 0 auto;
 }
 
-.sudoku-settings select.text_pole {
+.stg-settings select.text_pole {
     flex: 1 1 auto;
     min-width: 0;
 }
 
-.sudoku-settings .sudoku-stats-header {
+.stg-settings .stg-row.sudoku-stats-header {
     justify-content: space-between;
 }
 
@@ -48,7 +49,116 @@
     font-size: 0.85em;
 }
 
-/* --- Окно игры --- */
+/* --- Оболочка: корень, шапка, экран --- */
+
+.stg-root {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
+    color: var(--SmartThemeBodyColor);
+}
+
+.stg-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 2px 0;
+    width: 100%;
+    max-width: 100%;
+}
+
+.stg-back {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 0.9em;
+    padding: 4px 10px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.stg-back:hover {
+    background-color: var(--black30a);
+    background-color: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+.stg-title {
+    font-weight: 600;
+}
+
+.stg-screen {
+    width: 100%;
+    max-width: 100%;
+}
+
+/* --- Хаб: сетка плиток игр --- */
+
+.stg-hub {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    width: 100%;
+    max-width: 100%;
+}
+
+.stg-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 96px;
+    padding: 10px 8px;
+    /* Кнопка внутри чужого DOM: снимаем всё, что мог навесить ST или браузер. */
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 10px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.stg-tile:hover,
+.stg-tile:focus-visible {
+    border-color: var(--SmartThemeQuoteColor);
+    background-color: var(--black30a);
+    background-color: color-mix(in srgb, currentColor 5%, transparent);
+    outline: none;
+}
+
+.stg-tile i {
+    font-size: 1.6em;
+}
+
+.stg-tile-title {
+    font-weight: 600;
+}
+
+.stg-tile-tagline {
+    font-size: 0.75em;
+    opacity: 0.8;
+}
+
+/* Последняя сыгранная игра — тонкая рамка акцентом темы. */
+.stg-tile-last {
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+/* --- Окно игры: судоку --- */
 
 .sudoku-root {
     /* Размер доски. Ограничений три: ширина экрана, его высота (под доской ещё ряд
@@ -62,7 +172,11 @@
        светлой — наоборот. Так окно подхватывает любую тему, а не только тёмные. */
     --sudoku-accent: var(--SmartThemeQuoteColor, currentColor);
     --sudoku-danger: #e0533d;
+    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
+       вторую строку и оставит первую. */
+    --sudoku-tint-soft: var(--black30a);
     --sudoku-tint-soft: color-mix(in srgb, currentColor 5%, transparent);
+    --sudoku-tint-strong: var(--white30a);
     --sudoku-tint-strong: color-mix(in srgb, currentColor 14%, transparent);
     /* Сетка рисуется двумя градациями одного цвета, а не толщиной линий: волосяные
        линии внутри бокса и заметные — между боксами. Так доска читается структурно,
@@ -100,7 +214,7 @@
 .sudoku-timer {
     font-variant-numeric: tabular-nums;
     font-size: 1.1em;
-    opacity: 0.85;
+    opacity: 0.9;
 }
 
 .sudoku-hidden {
@@ -109,7 +223,7 @@
 
 .sudoku-status {
     font-size: 0.85em;
-    opacity: 0.7;
+    opacity: 0.85;
 }
 
 /* --- Доска --- */
@@ -245,7 +359,7 @@
 }
 
 .sudoku-note.sudoku-note-on {
-    opacity: 0.55;
+    opacity: 0.75;
 }
 
 /* В заполненной клетке пометок нет — прячем сетку целиком, чтобы не мешала цифре. */
@@ -272,6 +386,7 @@
     gap: 1px;
     /* Минимум под палец: 40px — нижняя граница, при которой по цифре ещё можно
        уверенно попасть на телефоне. */
+    min-width: 40px;
     min-height: 40px;
     padding: 4px 0 3px;
     /* Кнопка внутри чужого DOM: снимаем всё, что мог навесить ST или браузер. */
@@ -305,7 +420,7 @@
 .sudoku-remaining-left {
     font-size: 0.65em;
     line-height: 1;
-    opacity: 0.55;
+    opacity: 0.7;
 }
 
 /* Цифра выставлена вся — кнопка гаснет, но остаётся на месте: ряд не должен
@@ -338,7 +453,7 @@
 
 /* Нечего отменять/возвращать: кнопка приглушена, но не disabled — фокус не прыгает. */
 .sudoku-pad-action.sudoku-pad-off {
-    opacity: 0.4;
+    opacity: 0.55;
 }
 
 /* В режиме заметок доска отдаёт другой курсор — подсказка, что цифра уйдёт в пометки. */
@@ -348,7 +463,7 @@
 
 /* --- Фолбэк-оверлей (когда попапа ST нет) --- */
 
-.sudoku-overlay {
+.stg-overlay {
     position: fixed;
     inset: 0;
     z-index: 10000;
@@ -358,9 +473,9 @@
     background-color: var(--black70a);
 }
 
-/* Оверлей лежит снаружи .sudoku-root, поэтому переменные --sudoku-* сюда не доходят —
+/* Оверлей лежит снаружи .stg-root, поэтому переменные --sudoku-* сюда не доходят —
    цвета берутся из темы ST напрямую. */
-.sudoku-dialog {
+.stg-dialog {
     position: relative;
     padding: 20px;
     border: 1px solid var(--SmartThemeBorderColor);
@@ -371,7 +486,7 @@
     overflow: auto;
 }
 
-.sudoku-close {
+.stg-close {
     position: absolute;
     top: 8px;
     right: 10px;
@@ -380,8 +495,139 @@
     font-size: 1.2em;
 }
 
-.sudoku-close:hover {
+.stg-close:hover {
     opacity: 1;
+}
+
+/* --- Змейка --- */
+
+.snake-root {
+    /* Поле змейки: те же три ограничения, что у доски судоку — ширина экрана,
+       его высота (под полем шапка, d-pad и статус) и потолок на десктопе. */
+    --snake-size: clamp(232px, min(86vw, 56vh), 380px);
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
+    color: var(--SmartThemeBodyColor);
+}
+
+.snake-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: var(--snake-size);
+    max-width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+
+.snake-stage {
+    position: relative;
+    width: var(--snake-size);
+    max-width: 100%;
+    height: var(--snake-size);
+}
+
+.snake-view {
+    width: 100%;
+    height: 100%;
+}
+
+.snake-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 10px;
+    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
+       вторую строку и оставит первую. */
+    background-color: var(--black30a);
+    background-color: color-mix(in srgb, currentColor 5%, transparent);
+    touch-action: none;
+}
+
+.snake-dpad {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 44px;
+}
+
+.snake-dpad-grid {
+    display: grid;
+    grid-template-areas:
+        '. up .'
+        'left . right'
+        '. down .';
+    grid-template-columns: repeat(3, 44px);
+    grid-template-rows: repeat(3, 44px);
+    gap: 4px;
+}
+
+.snake-dpad-up {
+    grid-area: up;
+}
+
+.snake-dpad-down {
+    grid-area: down;
+}
+
+.snake-dpad-left {
+    grid-area: left;
+}
+
+.snake-dpad-right {
+    grid-area: right;
+}
+
+.snake-dpad-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.snake-dpad-btn:hover {
+    border-color: var(--SmartThemeQuoteColor);
+    background-color: var(--black30a);
+    background-color: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+.snake-dpad-pause {
+    padding: 0 14px;
+}
+
+/* Оверлей поверх поля (не корня): только затемняет канвас, не трогая шапку и d-pad. */
+.snake-over {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background-color: var(--black70a);
+    background-color: color-mix(in srgb, var(--black70a) 70%, transparent);
+}
+
+.snake-status {
+    font-size: 0.85em;
+    opacity: 0.7;
 }
 
 /* --- Узкие экраны --- */
@@ -410,5 +656,25 @@
 
     .sudoku-remaining-item {
         min-height: 42px;
+    }
+
+    .snake-root {
+        --snake-size: min(92vw, 58vh, 380px);
+        gap: 8px;
+    }
+
+    .snake-header {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    /* На узком экране кнопки d-pad растут — попадать в них пальцем проще. */
+    .snake-dpad-grid {
+        grid-template-columns: repeat(3, 48px);
+        grid-template-rows: repeat(3, 48px);
+    }
+
+    .snake-dpad-btn {
+        min-height: 48px;
     }
 }

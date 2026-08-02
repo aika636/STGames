@@ -4,12 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Sudoku** — клиентское UI-расширение SillyTavern: игра в судоку в модальном окне поверх чата.
-LLM в игре **не участвует**, `ctx.chat` не читается и не пишется, сетевых вызовов нет. Точки
-соприкосновения с ST — только кнопка запуска, попап и `extensionSettings` (сохранение партии).
-
-Головоломки генерируются **локально в JS** (полное решение backtracking'ом + выкалывание клеток
-с проверкой единственности решения). Готовых наборов пазлов нет.
+**STGames** — клиентское UI-расширение SillyTavern: платформа мини-игр с хабом, из которого
+игры открываются в модальном окне поверх чата. Сейчас в каталоге судоку и змейка; как
+добавить свою игру — `docs/games.md`. LLM в играх **не участвует**, `ctx.chat` не читается
+и не пишется, сетевых вызовов нет. Точки соприкосновения с ST — кнопка в wand-меню, попап
+и `extensionSettings` (настройки, партии, статистика).
 
 План разработки и фазы: `docs/roadmap.md`. Текущее состояние, команды, чеклист ручной
 проверки и известные грабли: `docs/development.md`.
@@ -21,25 +20,29 @@ LLM в игре **не участвует**, `ctx.chat` не читается и
 - **No backend.** Только UI-расширение, `server-plugin/` нет.
 - **Access SillyTavern through `SillyTavern.getContext()`**, не через относительные импорты
   `../../../../script.js`. Контекст **не кэшировать** в переменной модуля.
-- **`src/core/` не знает о DOM и о SillyTavern** — чистые функции над данными, тестируемые
-  под `node`. Вся привязка к браузеру — в `src/ui/`.
-- **Fail soft:** ошибка внутри игры логируется с префиксом `[Sudoku]` и не роняет UI таверны.
+- **`src/games/*/core/` не знает о DOM и о SillyTavern** — чистые функции над данными,
+  тестируемые под `node`. Вся привязка к браузеру — в `src/games/*/ui/` и `src/shell/`.
+- **Fail soft:** ошибка внутри расширения логируется с префиксом `[STGames]` и не роняет
+  UI таверны.
 
 ## Layout
 
 ```
 manifest.json    # ST extension descriptor (loading_order 100, requires: [])
-index.js         # точка входа: панель настроек, запуск игры
+index.js         # тонкая точка входа: регистрация игр, инициализация UI
 src/ctx.js       # getContext()/event_types-хелпер, toast()
-src/log.js       # логи [Sudoku], warnOnce()
-src/settings.js  # DEFAULT_SETTINGS, merge-on-load, биндинг settings.html
-src/core/        # rng / grid / solver / rate / generator / game / stats — чистая логика, DOM-free
-src/ui/          # board / modal / launcher / input — DOM и связь с ST
+src/log.js       # логи [STGames], warnOnce()
+src/settings.js  # extensionSettings.STGames, merge-on-load, миграция со старого Sudoku
+src/registry.js  # реестр игр: register()/list()/get(), проверка контракта
+src/shell/       # оболочка: modal (попап и сессия), hub (список игр), launcher,
+                 # settings-ui (общая панель настроек)
+src/games/       # по папке на игру: sudoku/, snake/ — внутри core/ (чистая логика)
+                 # и ui/ (DOM); контракт игры — src/registry.js и docs/games.md
 tests/           # node-тесты; ядро — без зависимостей, UI — под jsdom (_harness.mjs)
-style.css        # стили, префикс .sudoku-
-settings.html    # панель в Extensions drawer
-docs/            # roadmap (фазы, риски) / development (состояние, команды) /
-                 # sillytavern-api (проверенные API ST 1.18.0)
+style.css        # стили, префиксы .stg-, .sudoku-, .snake-
+settings.html    # каркас панели в Extensions drawer
+docs/            # games (контракт игры) / roadmap (фазы, риски) / development
+                 # (состояние, команды) / sillytavern-api (проверенные API ST 1.18.0)
 deploy.sh        # rsync на тестовый ST (не в git)
 ```
 
@@ -48,70 +51,32 @@ deploy.sh        # rsync на тестовый ST (не в git)
 ## Commands
 
 ```bash
-node --check index.js          # синтаксис без браузера
-node tests/solver.test.mjs     # решатель + операции над сеткой
-node tests/generator.test.mjs  # генератор и оценка сложности (100 головоломок на уровень)
-node tests/generator.test.mjs 10   # быстрый прогон: 10 на уровень
-node tests/game.test.mjs       # модель партии: ходы, пометки, undo/redo, таймер
-npm install --no-save jsdom && node tests/ui.test.mjs      # доска, окно, точки запуска
-node tests/input.test.mjs      # ввод: клавиатура, тап по цифре, заметки, undo (jsdom)
-node tests/persist.test.mjs    # сохранение партии и таймера между сессиями (jsdom)
-node tests/stats.test.mjs      # статистика по уровням
-./deploy.sh                    # залить на тестовый ST + хардрелоад вкладки
+node --check index.js     # синтаксис без браузера
+npm install --no-save jsdom  # UI-тесты нуждаются в jsdom; runtime-зависимостей нет
+node tests/run.mjs        # все тесты (свой раннер, подкаталоги tests/*)
+node tests/run.mjs sudoku # фильтр: только судоку
+node tests/run.mjs snake  # фильтр: только змейка
+./deploy.sh               # залить на тестовый ST + хардрелоад вкладки
 ```
 
-Тесты без зависимостей: свой раннер `tests/_harness.mjs`, npm-пакеты не нужны.
+Тесты без зависимостей: свой раннер `tests/_harness.mjs`, npm-пакеты не нужны (кроме jsdom
+для UI-тестов).
 
-## Ядро (`src/core/`)
+## Игры
 
-Сетка — плоский массив из 81 числа (0 = пусто), он же уходит в `extensionSettings` без
-конвертации. Солвер держит занятые цифры в 9-битных масках строк/столбцов/боксов и выбирает
-клетку с минимумом кандидатов (MRV); `countSolutions(grid, 2)` с ранним выходом на втором
-решении — основа проверки единственности при генерации.
-
-Уровень сложности (`rate.js`) = максимум из «уровня по технике» (одиночки → locked
-candidates → пары) и «уровня по числу подсказок» (≥38 easy, ≥32 medium, ниже hard).
-**Expert выдаётся только за нехватку техники**, не за число подсказок — почему именно так,
-написано в шапке `rate.js`.
-
-Партия (`game.js`) — три массива по 81 элементу (`puzzle` / `values` / `notes`-маски).
-Каждый ход пишется в историю как «клетки до → клетки после», поэтому undo/redo не зависят
-от типа операции и откатывают в том числе авточистку пометок у соседей.
-
-## UI (`src/ui/`)
-
-`input.js` не хранит состояние партии — он превращает события браузера в вызовы
-обработчиков; ход, выделение, режим заметок и проверка победы живут в `modal.js`.
-Слушатель клавиатуры висит на `document` в capture-фазе только при открытом окне и гасит
-**только обработанные** клавиши, иначе цифры уедут в чат. Под доской один ряд цифр 1–9 —
-он же счётчик оставшихся, он же экранный numpad: полей ввода в окне нет, поэтому на
-мобильном системная клавиатура не появляется и без него цифру поставить нечем. Раскладка
-клавиш и подводные камни — `docs/development.md`, раздел «Как устроен ввод».
-
-Партия сохраняется в `settings.savedGame` после каждого хода и при закрытии окна;
-`serializeGame()` пишет накопленное время без `startedAt`, поэтому пауза между сессиями
-игроку не засчитывается. Статистика (`settings.stats`) считается по **заказанному**
-уровню, а «сыграно» растёт в момент создания доски, а не решения. Границы восстановления
-и учёта — `docs/development.md`, разделы «Как сохраняется партия» и «Статистика».
-
-`renderStats()` живёт в `settings.js` и зовётся из окна игры после каждой засчитанной
-партии: панель настроек рисуется один раз при загрузке ST и сама себя не обновляет.
-
-Цвета: акцент и линии из переменных ST, заливки — `color-mix` от `currentColor` (окно
-подхватывает любую тему, включая светлые), у каждого такого правила есть фолбэк-строка.
-
-## Связь с SillyTavern
-
-Всё, что расширение берёт у таверны, — в `docs/sillytavern-api.md` (проверено на 1.18.0).
-Кратко: `extensionSettings`, `saveSettingsDebounced`, `callGenericPopup` +
-`POPUP_TYPE.DISPLAY`, `SlashCommandParser`, `#extensionsMenu`, `APP_READY`. Никаких
-относительных импортов из `public/` и никакой работы с чатом.
+Каждая игра — plain-объект по контракту реестра: `id`, `title`, `tagline`, `icon`,
+`defaults`, опциональные `slash` и `renderSettings`/`renderStats`, и обязательная
+`mount(root, api)`, возвращающая `{ destroy() }`. Хаб передаёт в `mount` `api` с живыми
+настройками игры, `save()`, `toast()`, `exitToHub()` и `isSoloGame()`. Полный контракт,
+жизненный цикл и рецепт «добавь свою игру» — `docs/games.md`.
 
 ## Conventions
 
-- Namespace: `MODULE_NAME = 'Sudoku'`, CSS-классы `sudoku-*`, настройки в
-  `ctx.extensionSettings.Sudoku` (camelCase `extensionSettings`, не `extension_settings`).
-- Настройки: замороженный `DEFAULT_SETTINGS` + мерж недостающих ключей при загрузке.
+- Namespace: `MODULE_NAME = 'STGames'`, CSS-классы с префиксами `stg-` (оболочка и хаб),
+  `sudoku-`, `snake-` (игры), настройки в `ctx.extensionSettings.STGames`
+  (camelCase `extensionSettings`, не `extension_settings`).
+- Настройки: замороженные дефолты в `game.defaults` + мерж недостающих ключей при чтении;
+  ключи верхнего уровня STGames (`version`/`lastGame`/`games`) правит только `src/settings.js`.
 - `event_types` vs `eventTypes`: только через `getEventTypes(ctx)`, подписку пропускать, если
   имени события нет.
 - Любое предположение о внутренностях ST проверять на живой инсталляции (ST 1.18.0)

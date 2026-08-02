@@ -17,7 +17,7 @@ export function getEventTypes(ctx) {
 
 // Безопасная обёртка над амбиентным toastr: если он недоступен (ранний вызов до полной
 // загрузки ST), сообщение не теряется, а уходит в консоль.
-export function toast(kind, message, title = 'Sudoku') {
+export function toast(kind, message, title = 'STGames') {
     try {
         if (typeof toastr !== 'undefined' && typeof toastr[kind] === 'function') {
             toastr[kind](message, title);

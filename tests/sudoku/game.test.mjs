@@ -1,9 +1,9 @@
 // Тесты модели партии.
 // Запуск: node tests/game.test.mjs
 
-import { CELLS, parseGrid } from '../src/core/grid.js';
-import { generatePuzzle } from '../src/core/generator.js';
-import { mulberry32 } from '../src/core/rng.js';
+import { CELLS, parseGrid } from '../../src/games/sudoku/core/grid.js';
+import { generatePuzzle } from '../../src/games/sudoku/core/generator.js';
+import { mulberry32 } from '../../src/games/sudoku/core/rng.js';
 import {
     canRedo,
     canUndo,
@@ -27,8 +27,8 @@ import {
     startTimer,
     toggleNote,
     undo,
-} from '../src/core/game.js';
-import { assert, assertEqual, report, test } from './_harness.mjs';
+} from '../../src/games/sudoku/core/game.js';
+import { assert, assertEqual, report, test } from '../_harness.mjs';
 
 function newGame(difficulty = 'easy', seed = 123) {
     const generated = generatePuzzle({ difficulty, rng: mulberry32(seed) });

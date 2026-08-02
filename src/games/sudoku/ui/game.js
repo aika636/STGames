@@ -1,13 +1,13 @@
-// Модальное окно с игрой. Здесь живёт вся связь с SillyTavern: попап, настройки, тосты.
+// Экран игры судоку. Хаб (src/shell/modal.js) создаёт контейнер root и зовёт
+// createGameScreen(root, api); про попап и SillyTavern этот модуль ничего не знает.
 //
-// Основной путь — ctx.callGenericPopup(..., POPUP_TYPE.DISPLAY): попап без кнопок, с
-// крестиком в углу и закрытием по Esc. Если попапа в этой версии ST нет (или он упал),
-// показывается собственный оверлей .sudoku-overlay — расширение не должно зависеть от
-// того, что внутренний API таверны останется прежним.
+// destroy() делает ровно то, что делал closeSession() в старом modal.js, и в том же
+// порядке: остановить таймер, отцепить слушатели, поставить таймер на паузу и
+// сохранить партию. persist() обязан прийти после pauseTimer() — иначе в настройки
+// уедет партия с «бегущим» startedAt, и пауза между сессиями засчитается игроку.
 
-import { getCtx, toast } from '../ctx.js';
-import { logError, logInfo } from '../log.js';
-import { LEVEL_LABELS, getSettings, renderStats, saveSettings } from '../settings.js';
+import { logError, logInfo } from '../../../log.js';
+import { LEVEL_LABELS } from '../settings.js';
 import { generatePuzzle } from '../core/generator.js';
 import { recordPlayed, recordSolved } from '../core/stats.js';
 import {
@@ -33,56 +33,28 @@ import { attachKeyboard, attachPointer, createControls, moveSelection } from './
 
 const TIMER_TICK_MS = 1000;
 
-// Открытая партия. Второй попап не открываем: две доски с одним состоянием разъехались
-// бы, а игроку и одной достаточно.
-let session = null;
+// api.args — аргументы точки запуска ({ difficulty } у слэш-команды). Явно указанный
+// уровень (`/sudoku hard`) означает новую партию, вход без аргумента (кнопка в
+// wand-меню, хаб) продолжает незаконченную, если она есть.
+export function createGameScreen(root, api) {
+    const requested = api.args?.difficulty;
+    const level = requested || api.settings.difficulty;
 
-export function isOpen() {
-    return session !== null;
+    const local = buildScreen(root, api, { resume: !requested, level });
+
+    return {
+        destroy: () => destroy(local),
+        refresh: () => {
+            if (local.state) redraw(local);
+        },
+    };
 }
 
-// Перерисовывает открытое окно. Нужно, когда настройки поменяли прямо во время партии:
-// redraw() читает их сам, но без внешнего пинка ждал бы следующего хода.
-export function refresh() {
-    if (session?.state) redraw(session);
-}
-
-export async function openSudoku({ difficulty } = {}) {
-    if (session) {
-        logInfo('окно уже открыто');
-        return;
-    }
-
-    const settings = getSettings();
-    const level = difficulty || settings.difficulty;
-
-    // Уровень указан явно (`/sudoku hard`) — игрок просит новую партию. Без аргумента
-    // (кнопка в wand-меню, голая /sudoku) продолжаем незаконченную, если она есть.
-    session = buildSession(level, { resume: !difficulty });
-
-    // Попап ST раздаёт фокус уже после того, как вставит содержимое, поэтому свой
-    // фокус ставим следующим тиком — иначе его перебьёт select уровня.
-    setTimeout(() => session?.root.focus?.(), 0);
-
-    try {
-        await showPopup(session.root);
-    } catch (err) {
-        logError('не удалось показать попап', err);
-    } finally {
-        closeSession();
-    }
-}
-
-function closeSession() {
-    if (!session) return;
-    clearInterval(session.timerId);
-    session.detach?.();
-    // Порядок важен: сначала останавливаем таймер, потом сохраняем — иначе в
-    // extensionSettings уедет партия с «бегущим» startedAt, и время между закрытием
-    // окна и следующим открытием засчиталось бы игроку.
-    pauseTimer(session.state);
-    persist(session);
-    session = null;
+function destroy(local) {
+    clearInterval(local.timerId);
+    local.detach?.();
+    pauseTimer(local.state);
+    persist(local);
 }
 
 // --- Сохранение партии
@@ -94,9 +66,8 @@ function closeSession() {
 function persist(local) {
     if (!local?.state) return;
     try {
-        const settings = getSettings();
-        settings.savedGame = serializeGame(local.state);
-        saveSettings();
+        local.api.settings.savedGame = serializeGame(local.state);
+        local.api.save();
     } catch (err) {
         logError('не удалось сохранить партию', err);
     }
@@ -104,9 +75,9 @@ function persist(local) {
 
 // Возвращает незаконченную сохранённую партию или null. Решённую не восстанавливаем:
 // открывать окно с уже собранной доской бессмысленно, игрок ждёт новую.
-function restoreGame() {
+function restoreGame(api) {
     try {
-        const saved = getSettings().savedGame;
+        const saved = api.settings.savedGame;
         const state = deserializeGame(saved);
         if (!state || state.completedAt) return null;
         return state;
@@ -125,12 +96,11 @@ function restoreGame() {
 // Обновление статистики — побочная запись, а не ход: если оно упадёт, партия должна
 // продолжаться как ни в чём не бывало, поэтому всё обёрнуто в try/catch.
 
-function countGame(record) {
+function countGame(local, record) {
     try {
-        const settings = getSettings();
-        const result = record(settings.stats);
-        saveSettings();
-        renderStats();
+        const result = record(local.api.settings.stats);
+        local.api.save();
+        local.api.renderAllStats();
         return result;
     } catch (err) {
         logError('не удалось обновить статистику', err);
@@ -138,14 +108,15 @@ function countGame(record) {
     }
 }
 
-// --- Сборка окна
+// --- Сборка экрана
 
-function buildSession(level, { resume = false } = {}) {
-    const root = document.createElement('div');
-    root.className = 'sudoku-root';
+function buildScreen(root, api, { level, resume = false } = {}) {
+    const screen = document.createElement('div');
+    screen.className = 'sudoku-root';
     // Фокусируемый корень: попап ST при открытии сам ставит фокус на первый подходящий
     // элемент внутри, и без этого им оказывался select уровня.
-    root.tabIndex = -1;
+    screen.tabIndex = -1;
+    root.appendChild(screen);
 
     const header = document.createElement('div');
     header.className = 'sudoku-header';
@@ -163,7 +134,8 @@ function buildSession(level, { resume = false } = {}) {
     const timer = document.createElement('span');
     timer.className = 'sudoku-timer';
 
-    const newGameBtn = document.createElement('div');
+    const newGameBtn = document.createElement('button');
+    newGameBtn.type = 'button';
     newGameBtn.className = 'sudoku-btn menu_button';
     newGameBtn.textContent = 'Новая игра';
 
@@ -175,7 +147,8 @@ function buildSession(level, { resume = false } = {}) {
     status.className = 'sudoku-status';
 
     const local = {
-        root,
+        api,
+        root: screen,
         board,
         timer,
         status,
@@ -184,14 +157,14 @@ function buildSession(level, { resume = false } = {}) {
         state: null,
         timerId: null,
         // Выбранная клетка (индекс или null) и режим заметок — состояние ввода, а не
-        // партии: в сохранение (Фаза 4) оно не уходит.
+        // партии: в сохранение оно не уходит.
         selected: null,
         notesMode: false,
         detach: null,
     };
 
-    // --- Ходы. Каждый меняет состояние и перерисовывает окно; проверка победы — в одном
-    // --- месте, чтобы её нельзя было забыть в новой ветке ввода.
+    // --- Ходы. Каждый меняет состояние и перерисовывает экран; проверка победы — в
+    // --- одном месте, чтобы её нельзя было забыть в новой ветке ввода.
 
     const play = (mutate) => {
         if (!local.state || local.state.completedAt) return;
@@ -203,10 +176,9 @@ function buildSession(level, { resume = false } = {}) {
 
     const inputDigit = (digit) => play(() => {
         if (local.selected === null) return false;
-        const settings = getSettings();
         if (local.notesMode) return toggleNote(local.state, local.selected, digit);
         return setValue(local.state, local.selected, digit, {
-            autoCleanNotes: settings.autoCleanNotes,
+            autoCleanNotes: api.settings.autoCleanNotes,
         });
     });
 
@@ -232,7 +204,7 @@ function buildSession(level, { resume = false } = {}) {
     local.pad = pad;
     local.remaining = remaining;
 
-    root.append(header, board.root, remaining.root, pad.root, status);
+    screen.append(header, board.root, remaining.root, pad.root, status);
 
     const select = (idx) => {
         // Повторный клик по выбранной клетке снимает выделение — так проще убрать
@@ -240,12 +212,12 @@ function buildSession(level, { resume = false } = {}) {
         local.selected = local.selected === idx ? null : idx;
         // Клик по клетке фокус не переносит (mousedown отменён, чтобы не выделялся
         // текст), поэтому уводим его на корень руками — иначе он останется на select.
-        root.focus?.();
+        screen.focus?.();
         redraw(local);
     };
 
     const detachPointer = attachPointer(board.root, select);
-    const detachKeyboard = attachKeyboard(root, handlers);
+    const detachKeyboard = attachKeyboard(screen, handlers);
     local.detach = () => {
         detachPointer();
         detachKeyboard();
@@ -272,21 +244,20 @@ function buildSession(level, { resume = false } = {}) {
         const state = createGame(generated);
         // «Сыграно» растёт в момент создания доски: партия, брошенная на середине,
         // тоже сыграна, иначе «решено» всегда совпадало бы со «сыграно».
-        countGame((stats) => recordPlayed(stats, state.difficulty));
+        countGame(local, (stats) => recordPlayed(stats, state.difficulty));
         startGame(state);
     };
 
     levelSelect.addEventListener('change', () => {
         const requested = levelSelect.value;
-        const current = getSettings();
-        current.difficulty = requested;
-        saveSettings();
+        api.settings.difficulty = requested;
+        api.save();
         startNewGame(requested);
     });
 
     newGameBtn.addEventListener('click', () => startNewGame(levelSelect.value));
 
-    const restored = resume ? restoreGame() : null;
+    const restored = resume ? restoreGame(api) : null;
     if (restored) {
         // Селектор показывает уровень восстановленной партии, а не тот, что лежит
         // в настройках: иначе подпись врала бы про доску на экране.
@@ -313,15 +284,15 @@ function checkWin(local) {
 
     const elapsed = getElapsedMs(local.state);
     const difficulty = local.state.difficulty;
-    const isBest = countGame((stats) => recordSolved(stats, difficulty, elapsed));
+    const isBest = countGame(local, (stats) => recordSolved(stats, difficulty, elapsed));
 
     const time = formatElapsed(elapsed);
-    toast('success', isBest ? `Решено за ${time} — лучшее время!` : `Решено за ${time}`);
+    local.api.toast('success', isBest ? `Решено за ${time} — лучшее время!` : `Решено за ${time}`);
     logInfo(`партия решена (${local.state.level}, ${time}${isBest ? ', рекорд' : ''})`);
 }
 
 function redraw(local) {
-    const settings = getSettings();
+    const settings = local.api.settings;
     local.board.render(local.state, {
         selected: local.selected,
         highlightConflicts: settings.highlightConflicts,
@@ -352,67 +323,8 @@ function describeStatus(local) {
 }
 
 function updateTimer(local) {
-    const settings = getSettings();
+    const settings = local.api.settings;
     local.timer.classList.toggle('sudoku-hidden', !settings.showTimer);
     if (!settings.showTimer) return;
     local.timer.textContent = formatElapsed(getElapsedMs(local.state));
-}
-
-// --- Попап
-
-async function showPopup(content) {
-    const ctx = getCtx();
-
-    if (typeof ctx.callGenericPopup === 'function') {
-        // DISPLAY — попап без кнопок, только крестик в углу; числовое значение на случай,
-        // если POPUP_TYPE в этой версии ST не экспортирован.
-        const DISPLAY = ctx.POPUP_TYPE?.DISPLAY ?? 4;
-        return ctx.callGenericPopup(content, DISPLAY, '', {
-            wider: true,
-            allowVerticalScrolling: true,
-            animation: 'fast',
-        });
-    }
-
-    return showFallbackOverlay(content);
-}
-
-// Свой оверлей на случай, когда попапа ST нет. Умеет ровно то же, что нужно игре:
-// закрытие по крестику, по клику мимо доски и по Esc.
-function showFallbackOverlay(content) {
-    return new Promise((resolve) => {
-        const overlay = document.createElement('div');
-        overlay.className = 'sudoku-overlay';
-
-        const dialog = document.createElement('div');
-        dialog.className = 'sudoku-dialog';
-
-        const close = document.createElement('div');
-        close.className = 'sudoku-close fa-solid fa-circle-xmark';
-        close.setAttribute('role', 'button');
-        close.setAttribute('aria-label', 'Закрыть');
-
-        dialog.append(close, content);
-        overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
-
-        const finish = () => {
-            document.removeEventListener('keydown', onKeyDown, true);
-            overlay.remove();
-            resolve();
-        };
-
-        function onKeyDown(event) {
-            if (event.key === 'Escape') {
-                event.stopPropagation();
-                finish();
-            }
-        }
-
-        close.addEventListener('click', finish);
-        overlay.addEventListener('click', (event) => {
-            if (event.target === overlay) finish();
-        });
-        document.addEventListener('keydown', onKeyDown, true);
-    });
 }

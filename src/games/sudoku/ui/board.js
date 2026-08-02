@@ -1,5 +1,5 @@
 // Отрисовка доски 9×9. Модуль знает про DOM, но ничего не знает про SillyTavern:
-// на вход ему дают состояние партии из src/core/game.js, наружу он отдаёт корневой
+// на вход ему дают состояние партии из src/games/sudoku/core/game.js, наружу он отдаёт корневой
 // элемент и функцию render().
 //
 // DOM строится один раз (81 клетка), дальше render() только переставляет классы и текст.
@@ -21,6 +21,8 @@ export function createBoard() {
         const cell = document.createElement('div');
         cell.className = 'sudoku-cell';
         cell.setAttribute('role', 'gridcell');
+        cell.id = `sudoku-cell-${idx}`;
+        cell.tabIndex = -1;
         cell.dataset.idx = String(idx);
 
         // Утолщённые границы боксов рисуются по data-атрибутам, а не по громоздким
@@ -136,11 +138,14 @@ function render(
         // Подсветка: сама клетка и все клетки с той же цифрой. Строку/столбец/бокс
         // выбранной клетки не подсвечиваем — сплошная заливка трёх юнитов забивает
         // доску сильнее, чем помогает читать её.
-        cell.classList.toggle('sudoku-selected', idx === selected);
+        const isSelected = idx === selected;
+        cell.classList.toggle('sudoku-selected', isSelected);
         cell.classList.toggle(
             'sudoku-same',
             selectedValue !== 0 && idx !== selected && digit === selectedValue,
         );
+        cell.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        cell.tabIndex = isSelected ? 0 : -1;
 
         const hasValue = digit !== 0;
         for (let d = 0; d < SIZE; d++) {
@@ -151,6 +156,11 @@ function render(
     }
 
     root.classList.toggle('sudoku-board-done', Boolean(state.completedAt));
+    if (selected !== null) {
+        root.setAttribute('aria-activedescendant', `sudoku-cell-${selected}`);
+    } else {
+        root.removeAttribute('aria-activedescendant');
+    }
 }
 
 const EMPTY_SET = new Set();

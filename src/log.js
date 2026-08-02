@@ -1,7 +1,7 @@
-// Логирование Sudoku. Все сообщения идут с префиксом [Sudoku], чтобы их было легко
+// Логирование хаба. Все сообщения идут с префиксом [STGames], чтобы их было легко
 // отличить в консоли от логов самого SillyTavern и остальных расширений.
 
-const PREFIX = '[Sudoku]';
+const PREFIX = '[STGames]';
 
 export function logInfo(...args) {
     console.log(PREFIX, ...args);

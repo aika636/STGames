@@ -1,8 +1,8 @@
 // Тесты статистики по уровням (Фаза 4). Чистое ядро, зависимостей нет.
 // Запуск: node tests/stats.test.mjs
 
-import { EMPTY_ENTRY, isEmpty, readEntry, recordPlayed, recordSolved, resetStats } from '../src/core/stats.js';
-import { assert, assertEqual, report, test } from './_harness.mjs';
+import { EMPTY_ENTRY, isEmpty, readEntry, recordPlayed, recordSolved, resetStats } from '../../src/games/sudoku/core/stats.js';
+import { assert, assertEqual, report, test } from '../_harness.mjs';
 
 console.log('stats');
 

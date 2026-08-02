@@ -1,11 +1,11 @@
 {
-    "display_name": "Sudoku",
+    "display_name": "STGames",
     "loading_order": 100,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
     "author": "aika636",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "auto_update": false
 }

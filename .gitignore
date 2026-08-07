@@ -2,6 +2,9 @@
 node_modules/
 package-lock.json
 
+# Скриншоты упавших e2e-тестов
+tests/e2e/.artifacts/
+
 # Мусор ОС и редакторов
 .DS_Store
 Thumbs.db

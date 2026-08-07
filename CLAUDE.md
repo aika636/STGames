@@ -39,6 +39,7 @@ src/shell/       # оболочка: modal (попап и сессия), hub (с
 src/games/       # по папке на игру: sudoku/, snake/ — внутри core/ (чистая логика)
                  # и ui/ (DOM); контракт игры — src/registry.js и docs/games.md
 tests/           # node-тесты; ядро — без зависимостей, UI — под jsdom (_harness.mjs)
+tests/e2e/       # e2e под Playwright в живой ST: _st.mjs (обвязка), run.mjs, *.e2e.mjs
 style.css        # стили, префиксы .stg-, .sudoku-, .snake-
 settings.html    # каркас панели в Extensions drawer
 docs/            # games (контракт игры) / roadmap (фазы, риски) / development
@@ -52,15 +53,18 @@ deploy.sh        # rsync на тестовый ST (не в git)
 
 ```bash
 node --check index.js     # синтаксис без браузера
-npm install --no-save jsdom  # UI-тесты нуждаются в jsdom; runtime-зависимостей нет
+npm install --no-save jsdom playwright   # dev-зависимости: jsdom для UI, playwright для e2e
 node tests/run.mjs        # все тесты (свой раннер, подкаталоги tests/*)
 node tests/run.mjs sudoku # фильтр: только судоку
 node tests/run.mjs snake  # фильтр: только змейка
+STGAMES_ST_DIR=<путь к ST> node tests/e2e/run.mjs   # e2e в живой таверне под Playwright
 ./deploy.sh               # залить на тестовый ST + хардрелоад вкладки
 ```
 
 Тесты без зависимостей: свой раннер `tests/_harness.mjs`, npm-пакеты не нужны (кроме jsdom
-для UI-тестов).
+для UI-тестов и playwright для e2e; обе ставятся `--no-save`, `package.json` в репозитории
+нет). E2e поднимает отдельный SillyTavern на временном data-root и цепляет к нему рабочее
+дерево симлинком — подробности в `docs/development.md`.
 
 ## Игры
 

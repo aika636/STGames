@@ -1,0 +1,74 @@
+// Игры в живой таверне. Дымовой уровень: экран монтируется, ввод доходит до игры,
+// состояние меняется. Правила игр проверяются юнит-тестами ядра — здесь важно ровно
+// то, чего они не видят: что в реальном браузере и попапе ST всё это вообще работает.
+
+import { assert, assertEqual } from '../_harness.mjs';
+import { closeShell, e2eTest, openGame, openHub, resetSettings } from './_st.mjs';
+
+export default async function run(env) {
+    const { page } = env;
+
+    await e2eTest(env, 'судоку: доска рисуется и принимает цифру с клавиатуры', async () => {
+        await resetSettings(page);
+        await openHub(page);
+        await openGame(page, 'sudoku');
+
+        assertEqual(await page.locator('.sudoku-cell').count(), 81, 'на доске не 81 клетка');
+
+        // Ввод идёт в выбранную клетку, поэтому сначала клик по пустой. Именно этот
+        // путь ломается чаще всего: глобальные хоткеи ST перехватывают цифры, если
+        // слушатель судоку встал не в capture-фазе.
+        const empty = page.locator('.sudoku-cell:not(.sudoku-given)').first();
+        await empty.click();
+        await page.keyboard.press('7');
+
+        await page.waitForFunction(
+            () => document.querySelector('.sudoku-cell.sudoku-selected .sudoku-value')?.textContent === '7',
+            null,
+            { timeout: 5000 },
+        );
+
+        // Цифра не должна утечь в поле ввода чата — это и есть главный риск capture-фазы.
+        const chat = await page.inputValue('#send_textarea').catch(() => '');
+        assertEqual(chat, '', 'цифра ушла в поле ввода чата');
+
+        await closeShell(page);
+    });
+
+    await e2eTest(env, 'змейка: поле живёт и счёт обновляется', async () => {
+        await resetSettings(page);
+        await openHub(page);
+        await openGame(page, 'snake');
+
+        const canvas = page.locator('.snake-canvas');
+        assertEqual(await canvas.count(), 1, 'нет канваса змейки');
+        const box = await canvas.boundingBox();
+        assert(box && box.width > 0 && box.height > 0, 'канвас змейки нулевого размера');
+
+        const header = page.locator('.snake-header');
+        assert(/Счёт:\s*\d+/.test(await header.textContent()), 'в шапке нет счёта');
+
+        // Змейка встаёт на паузу при потере фокуса окном — кликаем внутрь поля,
+        // иначе в headless-браузере заезд может не начаться вовсе.
+        await canvas.click({ position: { x: 5, y: 5 } });
+        await page.keyboard.press('ArrowRight');
+
+        // Признак того, что цикл действительно крутится: картинка на канвасе меняется.
+        // Счёт для этого не годится — еда может долго не попадаться.
+        const before = await canvasSignature(page);
+        await page.waitForFunction(
+            (snapshot) => {
+                const el = document.querySelector('.snake-canvas');
+                return Boolean(el) && el.toDataURL().slice(0, 256) !== snapshot;
+            },
+            before,
+            { timeout: 10_000 },
+        );
+
+        await closeShell(page);
+    });
+}
+
+function canvasSignature(page) {
+    return page.evaluate(() => document.querySelector('.snake-canvas')?.toDataURL().slice(0, 256) ?? '');
+}

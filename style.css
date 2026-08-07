@@ -165,6 +165,9 @@
        цифр, кнопки и статус — им нужно около 150px) и потолок на десктопе, чтобы
        окно не расползалось на пол-монитора. */
     --sudoku-size: clamp(232px, min(86vw, 56vh), 380px);
+    /* Желаемый размер клетки. Реальный может быть меньше (доску режет max-width в узком
+       попапе), поэтому шрифты считаются в cqw от самой доски, а --sudoku-cell остался
+       фолбэком для браузеров без container queries. */
     --sudoku-cell: calc(var(--sudoku-size) / 9);
 
     /* Тема таверны. Акцент и рамки берутся из переменных ST, а все заливки считаются
@@ -233,8 +236,13 @@
     grid-template-columns: repeat(9, 1fr);
     grid-template-rows: repeat(9, 1fr);
     width: var(--sudoku-size);
-    height: var(--sudoku-size);
     max-width: 100%;
+    /* Высота считается от фактической ширины, а не от --sudoku-size: 92vw не знает про
+       поля попапа ST, и на телефоне max-width режет доску уже желаемого. С фиксированной
+       высотой клетки выходили выше своей ширины — доска переставала быть квадратной. */
+    aspect-ratio: 1;
+    /* Контейнер для cqw ниже: размеры цифр и пометок берутся от реальной ширины доски. */
+    container-type: inline-size;
     border: 1px solid var(--sudoku-line-strong);
     border-radius: 10px;
     /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
@@ -253,7 +261,10 @@
     justify-content: center;
     border-top: 1px solid var(--sudoku-line);
     border-left: 1px solid var(--sudoku-line);
+    /* Клетка — 1/9 ширины доски, то есть 11.11cqw; цифра — половина клетки. Фолбэк
+       для браузеров без container queries идёт первым (там доска = --sudoku-size). */
     font-size: calc(var(--sudoku-cell) * 0.5);
+    font-size: 5.55cqw;
     font-weight: 400;
     line-height: 1;
     cursor: pointer;
@@ -347,6 +358,7 @@
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(3, 1fr);
     font-size: calc(var(--sudoku-cell) * 0.26);
+    font-size: 2.89cqw;
     line-height: 1;
     pointer-events: none;
 }
@@ -371,10 +383,14 @@
 
 .sudoku-remaining {
     display: grid;
-    grid-template-columns: repeat(9, 1fr);
+    /* minmax(0, 1fr), а не 1fr: у голого 1fr минимум — min-content кнопки, и на узком
+       экране ряд не сжимается, а вылезает за правый край (последние цифры обрезаются). */
+    grid-template-columns: repeat(9, minmax(0, 1fr));
     gap: 4px;
     width: var(--sudoku-size);
     max-width: 100%;
+    /* Ряд ровно той же ширины, что доска, — цифры в нём меряются так же, в cqw. */
+    container-type: inline-size;
     font-variant-numeric: tabular-nums;
 }
 
@@ -384,9 +400,10 @@
     align-items: center;
     justify-content: center;
     gap: 1px;
-    /* Минимум под палец: 40px — нижняя граница, при которой по цифре ещё можно
-       уверенно попасть на телефоне. */
-    min-width: 40px;
+    /* Ширину задаёт грид (ряд ровно по ширине доски), поэтому своего минимума у кнопки
+       нет — иначе девять кнопок не влезают в ряд. Под палец работает высота: 40px —
+       нижняя граница, при которой по цифре ещё можно уверенно попасть на телефоне. */
+    min-width: 0;
     min-height: 40px;
     padding: 4px 0 3px;
     /* Кнопка внутри чужого DOM: снимаем всё, что мог навесить ST или браузер. */
@@ -414,6 +431,7 @@
 .sudoku-remaining-digit {
     color: var(--sudoku-accent);
     font-size: calc(var(--sudoku-cell) * 0.46);
+    font-size: 5.11cqw;
     line-height: 1;
 }
 

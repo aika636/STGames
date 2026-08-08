@@ -597,6 +597,11 @@
     touch-action: none;
 }
 
+/* Пунктир = стены сквозные: игрок должен видеть режим, не открывая настройки. */
+.snake-canvas-wrap {
+    border-style: dashed;
+}
+
 .snake-dpad {
     display: flex;
     align-items: center;

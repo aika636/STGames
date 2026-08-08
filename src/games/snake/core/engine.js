@@ -33,12 +33,15 @@ export function speedMs(state) {
 // Очки намеренно не равны длине: иначе «лучший счёт» и «лучшая длина» в статистике
 // дублировали бы друг друга. Бонус за каждую пятую еду награждает за игру на высокой
 // скорости, где дольше продержаться труднее.
-export function createSnake({ cols = COLS, rows = ROWS, rng = Math.random } = {}) {
+// wrap=false — классика: стена убивает. wrap=true — поле-тор: уйдя за край, змейка
+// выходит с противоположной стороны, единственная опасность — собственное тело.
+export function createSnake({ cols = COLS, rows = ROWS, rng = Math.random, wrap = false } = {}) {
     const cx = Math.floor(cols / 2);
     const cy = Math.floor(rows / 2);
     const state = {
         cols,
         rows,
+        wrap,
         snake: [
             { x: cx, y: cy },
             { x: cx - 1, y: cy },
@@ -90,9 +93,15 @@ export function step(state, rng) {
     const head = state.snake[0];
     const newHead = { x: head.x + dir.x, y: head.y + dir.y };
 
+    // Шаг за край — либо смерть, либо телепорт на противоположную сторону. Остаток по
+    // модулю берётся с добавкой cols/rows, потому что в JS -1 % 21 === -1, а не 20.
     if (newHead.x < 0 || newHead.x >= state.cols || newHead.y < 0 || newHead.y >= state.rows) {
-        state.alive = false;
-        return { moved: false, ate: false, dead: true, won: state.won };
+        if (!state.wrap) {
+            state.alive = false;
+            return { moved: false, ate: false, dead: true, won: state.won };
+        }
+        newHead.x = ((newHead.x % state.cols) + state.cols) % state.cols;
+        newHead.y = ((newHead.y % state.rows) + state.rows) % state.rows;
     }
 
     // Хвост остаётся на месте, только если змейка в этот тик ест: при поедании он

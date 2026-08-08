@@ -53,6 +53,58 @@ test('стена убивает', () => {
     assert(!res.won, 'не победа');
 });
 
+test('со сквозными стенами змейка выходит с противоположной стороны', () => {
+    const cases = [
+        { dir: { x: 1, y: 0 }, head: { x: 4, y: 2 }, expect: { x: 0, y: 2 } },
+        { dir: { x: -1, y: 0 }, head: { x: 0, y: 2 }, expect: { x: 4, y: 2 } },
+        { dir: { x: 0, y: -1 }, head: { x: 2, y: 0 }, expect: { x: 2, y: 4 } },
+        { dir: { x: 0, y: 1 }, head: { x: 2, y: 4 }, expect: { x: 2, y: 0 } },
+    ];
+
+    cases.forEach(({ dir, head, expect }, i) => {
+        const state = createSnake({ cols: 5, rows: 5, rng: mulberry32(30 + i), wrap: true });
+        state.food = { x: 1, y: 1 }; // не на пути телепорта
+        state.snake = [head, { x: head.x - dir.x, y: head.y - dir.y }];
+        state.dir = dir;
+
+        const res = step(state, mulberry32(40 + i));
+        assert(!res.dead, `край не убил (${dir.x},${dir.y})`);
+        assert(state.alive, 'змейка жива');
+        assertEqual(state.snake[0].x, expect.x, `x после перехода (${dir.x},${dir.y})`);
+        assertEqual(state.snake[0].y, expect.y, `y после перехода (${dir.x},${dir.y})`);
+        assertEqual(state.snake.length, 2, 'длина не изменилась');
+    });
+});
+
+test('сквозные стены не отменяют смерть от собственного тела за краем', () => {
+    const state = createSnake({ cols: 5, rows: 5, rng: mulberry32(31), wrap: true });
+    state.food = { x: 2, y: 4 };
+    // Голова у правого края, а тело занимает клетку, куда она телепортируется, — и это
+    // не уходящий в этом тике хвост (хвост ниже, на (0,1)).
+    state.snake = [{ x: 4, y: 0 }, { x: 3, y: 0 }, { x: 2, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 1 }];
+    state.dir = { x: 1, y: 0 };
+
+    const res = step(state, mulberry32(41));
+    assert(res.dead, 'въехал в собственный хвост на той стороне');
+    assertEqual(state.alive, false, 'alive=false');
+});
+
+test('сквозные стены выключены по умолчанию', () => {
+    const state = createSnake({ cols: 5, rows: 5, rng: mulberry32(32) });
+    assertEqual(state.wrap, false, 'классические стены без явного wrap');
+});
+
+test('еда за краем съедается после перехода', () => {
+    const state = createSnake({ cols: 5, rows: 5, rng: mulberry32(33), wrap: true });
+    state.snake = [{ x: 4, y: 2 }, { x: 3, y: 2 }];
+    state.dir = { x: 1, y: 0 };
+    state.food = { x: 0, y: 2 };
+
+    const res = step(state, mulberry32(43));
+    assert(res.ate, 'еда на противоположной стороне засчитана');
+    assertEqual(state.snake.length, 3, 'длина выросла');
+});
+
 test('наезд на собственное тело убивает', () => {
     const state = createSnake({ cols: 5, rows: 5, rng: mulberry32(7) });
     state.food = { x: 0, y: 0 };

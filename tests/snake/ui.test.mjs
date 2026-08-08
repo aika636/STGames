@@ -162,13 +162,32 @@ await session({ gameId: 'snake' }, async (root) => {
         assert(headDpad.y < headArrow.y, 'голова сдвинулась вверх');
     });
 
-    test('смерть показывает оверлей и записывает рекорд', () => {
-        // Девять тиков вверх от y=8 упираются в стену: счёт не растёт, рекорд — по длине.
-        for (let i = 0; i < 9; i++) {
+    // Тик берёт время из общего счётчика: тесты ниже гоняют кадры подряд, и время
+    // должно расти сквозь них, иначе следующий кадр не дотянет до порога скорости.
+    let now = 680;
+    function tickUp(count) {
+        for (let i = 0; i < count; i++) {
             const key = new dom.window.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true });
             document.dispatchEvent(key);
-            rafCallbacks[rafCallbacks.length - 1](680 + i * 170);
+            now += 170;
+            rafCallbacks[rafCallbacks.length - 1](now);
         }
+    }
+
+    test('со сквозными стенами верхний край не убивает', () => {
+        // Настройка включена по умолчанию: девять тиков вверх от y=8 уводят голову за
+        // верхний край и возвращают её снизу.
+        tickUp(9);
+
+        assertEqual(root.querySelector('.snake-over').style.display, 'none', 'оверлея нет');
+        assertEqual(root.querySelector('.snake-status').textContent, '', 'статус пуст — заезд продолжается');
+    });
+
+    test('смерть показывает оверлей и записывает рекорд', () => {
+        // Классические стены — переключатель действует на текущем заезде: голова идёт
+        // вверх до края и разбивается. Счёт не растёт, рекорд — по длине.
+        getSettings().games.snake.wrapWalls = false;
+        tickUp(25);
 
         const overlay = root.querySelector('.snake-over');
         assert(overlay, 'оверлей на месте');
@@ -215,6 +234,26 @@ test('renderSettings рисует чекбокс сетки и сохраняе�
     cb.checked = true;
     cb.dispatchEvent(new dom.window.Event('change'));
     assertEqual(api.settings.showGrid, true, 'настройка обновилась');
+    assert(saved, 'save вызван');
+});
+
+test('renderSettings рисует чекбокс сквозных стен, включённый по умолчанию', () => {
+    let saved = false;
+    const api = {
+        settings: { stats: {}, showGrid: false, wrapWalls: true },
+        save: () => { saved = true; },
+    };
+    const container = document.createElement('div');
+
+    snakeGame.renderSettings(container, api);
+
+    const cb = container.querySelector('#snake_wrap_walls');
+    assert(cb, 'чекбокс на месте');
+    assertEqual(cb.checked, true, 'по умолчанию включён');
+
+    cb.checked = false;
+    cb.dispatchEvent(new dom.window.Event('change'));
+    assertEqual(api.settings.wrapWalls, false, 'настройка обновилась');
     assert(saved, 'save вызван');
 });
 

@@ -10,7 +10,10 @@ import { checkbox } from '../../shell/settings-ui.js';
 import { createView } from './ui/view.js';
 import { attachKeyboard, createDPad, attachSwipe } from './ui/controls.js';
 
-const DEFAULTS = Object.freeze({ stats: {}, showGrid: false });
+// Сквозные стены включены по умолчанию: без них проигрыш чаще всего приходит от
+// случайного касания края, а не от собственного хвоста. Кому нужна классика — чекбокс
+// в панели настроек, он действует сразу, не дожидаясь новой партии.
+const DEFAULTS = Object.freeze({ stats: {}, showGrid: false, wrapWalls: true });
 
 export default {
     id: 'snake',
@@ -28,6 +31,10 @@ export default {
         // выглядеть одинаково, и клик по подписи должен переключать чекбокс.
         container.appendChild(checkbox('snake_show_grid', 'Показывать сетку', api.settings.showGrid, (checked) => {
             api.settings.showGrid = checked;
+            api.save();
+        }));
+        container.appendChild(checkbox('snake_wrap_walls', 'Сквозные стены (выход с другой стороны)', api.settings.wrapWalls !== false, (checked) => {
+            api.settings.wrapWalls = checked;
             api.save();
         }));
     },
@@ -105,14 +112,16 @@ function createSnakeScreen(root, api) {
     status.className = 'snake-status';
     root.appendChild(status);
 
-    let state = createSnake({ rng: Math.random });
+    const settings = api.settings;
+    const wrapEnabled = () => settings.wrapWalls !== false;
+
+    let state = createSnake({ rng: Math.random, wrap: wrapEnabled() });
     let manualPaused = false;
     let autoPaused = false;
     let paused = () => manualPaused || autoPaused;
     let lastStep = 0;
     let rafId = null;
     let overRecorded = false;
-    const settings = api.settings;
 
     function updateHeader() {
         const best = readStats(settings.stats);
@@ -168,7 +177,7 @@ function createSnakeScreen(root, api) {
     }
 
     function restart() {
-        state = createSnake({ rng: Math.random });
+        state = createSnake({ rng: Math.random, wrap: wrapEnabled() });
         manualPaused = false;
         autoPaused = false;
         lastStep = performance.now();
@@ -188,6 +197,9 @@ function createSnakeScreen(root, api) {
     }
 
     function tick() {
+        // Настройку правят в другой панели, при открытом экране: подхватываем её перед
+        // ходом, чтобы переключатель не ждал новой партии.
+        state.wrap = wrapEnabled();
         if (!paused() && state.alive && !state.won) {
             const res = step(state, Math.random);
             // Флаги alive/won выставляет сам step() — перезаписывать их здесь нельзя:

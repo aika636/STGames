@@ -176,7 +176,7 @@ export async function openHub(page) {
     await page.waitForSelector('.stg-root .stg-hub');
 }
 
-const GAME_ROOTS = Object.freeze({ sudoku: '.sudoku-root', snake: '.snake-root' });
+const GAME_ROOTS = Object.freeze({ sudoku: '.sudoku-root', snake: '.snake-root', reversi: '.reversi-root' });
 
 export async function openGame(page, id) {
     const root = GAME_ROOTS[id];

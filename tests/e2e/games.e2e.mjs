@@ -3,7 +3,9 @@
 // то, чего они не видят: что в реальном браузере и попапе ST всё это вообще работает.
 
 import { assert, assertEqual } from '../_harness.mjs';
-import { closeShell, e2eTest, openGame, openHub, resetSettings } from './_st.mjs';
+import {
+    closeShell, dismissPopups, e2eTest, flushSettings, openGame, openHub, readSettings, resetSettings,
+} from './_st.mjs';
 
 export default async function run(env) {
     const { page } = env;
@@ -63,6 +65,59 @@ export default async function run(env) {
             },
             before,
             { timeout: 10_000 },
+        );
+
+        await closeShell(page);
+    });
+
+    await e2eTest(env, 'реверси: ход игрока, ответ соперника и сохранение партии', async () => {
+        await resetSettings(page);
+        await openHub(page);
+        await openGame(page, 'reversi');
+
+        assertEqual(await page.locator('.reversi-cell').count(), 64, 'на доске не 64 клетки');
+
+        // Доска должна остаться квадратной в реальном попапе ST: в jsdom размеров нет
+        // вовсе, а в Фазе 5 именно здесь ломалась вёрстка на узком экране.
+        const box = await page.locator('.reversi-board').boundingBox();
+        assert(box && box.width > 0, 'доска нулевой ширины');
+        assert(Math.abs(box.width - box.height) <= 2, `доска не квадратная: ${box.width}×${box.height}`);
+
+        assertEqual(await page.locator('.reversi-cell.reversi-hint').count(), 4, 'не четыре подсказки в старте');
+        await page.locator('.reversi-cell.reversi-hint').first().click();
+
+        // Ход соперника отложен на 300 мс и считается синхронно — ждём результата, а не
+        // паузы: фишек на доске должно стать шесть, а очередь вернуться игроку.
+        await page.waitForFunction(
+            () => document.querySelectorAll('.reversi-black, .reversi-white').length === 6,
+            null,
+            { timeout: 10_000 },
+        );
+        await page.waitForFunction(
+            () => document.querySelector('.reversi-turn')?.textContent.startsWith('Ваш ход'),
+            null,
+            { timeout: 10_000 },
+        );
+
+        await closeShell(page);
+        await flushSettings(page);
+
+        const saved = (await readSettings(page)).games?.reversi?.savedGame;
+        assert(saved, 'партия не сохранилась в настройках');
+        assertEqual(saved.board.length, 64, 'доска сохранена не строкой из 64 символов');
+
+        // Партия обязана пережить перезагрузку страницы — ради этого она и пишется
+        // в extensionSettings после каждого хода.
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#stgames_wand_button', { state: 'attached', timeout: 90_000 });
+        await dismissPopups(page);
+        await openHub(page);
+        await openGame(page, 'reversi');
+
+        assertEqual(
+            await page.locator('.reversi-black, .reversi-white').count(),
+            6,
+            'после перезагрузки открылась новая партия, а не сохранённая',
         );
 
         await closeShell(page);

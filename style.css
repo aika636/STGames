@@ -874,6 +874,349 @@
     }
 }
 
+/* --- Окно игры: слова --- */
+
+.words-root {
+    /* Плитка ограничена И по ширине, И по высоте — грабли Фазы 5. Бюджет высоты на
+       360×640: попап 90vh ≈ 576px, минус шапка попапа и topbar ≈ 490px; сетка ~306 +
+       клавиатура ~132 + зазоры ≈ 486. Влезает впритык, поэтому clamp по высоте — не
+       перестраховка, а условие того, что игра вообще помещается. */
+    --words-tile: clamp(32px, min(16vw, 6.8vh), 56px);
+    --words-gap: 5px;
+
+    /* Цвета состояний фиксированные, а не из темы: зелёный и жёлтый здесь — не
+       украшение, а само сообщение игры, и «жёлтый цвета акцента» перестал бы читаться.
+       Контраст с белым текстом держится в обеих темах ST. */
+    --words-correct: #4f8a45;
+    --words-present: #b59f3b;
+    --words-absent: var(--black50a);
+    --words-absent: color-mix(in srgb, currentColor 22%, transparent);
+    --words-line: var(--SmartThemeBorderColor, currentColor);
+    --words-line: color-mix(in srgb, currentColor 26%, transparent);
+    --words-invalid: #c0392b;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
+    color: var(--SmartThemeBodyColor);
+}
+
+/* Режим для дальтоников — не «убрать цвет», а другая пара: жёлто-зелёная хуже всего
+   различается при дейтераномалии, самой частой форме. Значки на плитках добавляются
+   ниже, чтобы цвет вообще не был единственным носителем информации. */
+.words-root.words-colorblind {
+    --words-correct: #c2570f;
+    --words-present: #2b7bba;
+}
+
+.words-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+
+.words-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    min-width: 0;
+}
+
+.words-attempts {
+    font-size: 1.05em;
+}
+
+.words-mode {
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.words-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.words-loading,
+.words-status {
+    min-height: 1.2em;
+    font-size: 0.85em;
+    opacity: 0.85;
+    text-align: center;
+}
+
+/* --- Поле --- */
+
+/* Ширина по содержимому: иначе доска растягивается во всю модалку на десктопе и
+   пять букв разъезжаются по экрану. */
+.words-grid {
+    display: grid;
+    grid-template-rows: repeat(6, var(--words-tile));
+    gap: var(--words-gap);
+    width: max-content;
+    max-width: 100%;
+}
+
+.words-row {
+    display: grid;
+    grid-template-columns: repeat(var(--words-cols, 5), var(--words-tile));
+    gap: var(--words-gap);
+}
+
+.words-tile {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--words-line);
+    border-radius: 4px;
+    font-size: calc(var(--words-tile) * 0.5);
+    font-weight: 700;
+    line-height: 1;
+    text-transform: uppercase;
+    user-select: none;
+}
+
+/* Набранная, но не подтверждённая буква: рамка ярче, заливки нет — цвет появляется
+   только после Enter. */
+.words-tile.words-tile-filled {
+    border-color: color-mix(in srgb, currentColor 55%, transparent);
+}
+
+.words-tile-correct,
+.words-tile-present,
+.words-tile-absent {
+    color: #fff;
+    border-color: transparent;
+}
+
+.words-tile-correct {
+    background-color: var(--words-correct);
+}
+
+.words-tile-present {
+    background-color: var(--words-present);
+}
+
+.words-tile-absent {
+    background-color: var(--words-absent);
+    /* Серая плитка — единственная, где заливка полупрозрачная: на светлой теме белый
+       текст на ней не читался бы. */
+    color: inherit;
+}
+
+/* Значки режима дальтоника: ● — на месте, ◐ — есть в слове. Серой плитке значок не
+   нужен: «нет в слове» читается отсутствием заливки. */
+.words-colorblind .words-tile[data-state='correct']::after,
+.words-colorblind .words-tile[data-state='present']::after {
+    position: absolute;
+    top: 1px;
+    right: 3px;
+    font-size: 0.42em;
+    line-height: 1;
+    opacity: 0.9;
+}
+
+.words-colorblind .words-tile[data-state='correct']::after {
+    content: '●';
+}
+
+.words-colorblind .words-tile[data-state='present']::after {
+    content: '◐';
+}
+
+/* Раскрытие строки: плитки переворачиваются слева направо, задержку каждой ставит
+   ui/grid.js в --words-reveal-delay. Анимация ничего не блокирует — набирать
+   следующее слово можно сразу. */
+@keyframes words-flip {
+    0% { transform: rotateX(0); }
+    50% { transform: rotateX(90deg); }
+    100% { transform: rotateX(0); }
+}
+
+.words-row-reveal .words-tile {
+    animation: words-flip 300ms ease-in-out both;
+    animation-delay: var(--words-reveal-delay, 0ms);
+}
+
+/* Отказ: строка трясётся ~350 мс (столько же держится класс — см. ui/feedback.js). */
+@keyframes words-shake {
+    10%, 90% { transform: translateX(-2px); }
+    30%, 70% { transform: translateX(4px); }
+    50% { transform: translateX(-6px); }
+}
+
+.words-row.words-shake {
+    animation: words-shake 350ms ease-in-out;
+}
+
+.words-row.words-invalid .words-tile {
+    border-color: var(--words-invalid);
+}
+
+/* --- Экранная клавиатура ---
+ *
+ * Обязательна, а не опциональна: в окне игры нет ни одного поля ввода, поэтому на
+ * телефоне системная клавиатура не появится вовсе и букву физически нечем ввести.
+ *
+ * Все три ряда — ровно 24 юнита: 12 букв по 2, 11 букв по 2 (со сдвигом на юнит) и
+ * ⏎ + 9 букв + ⌫ (3 + 18 + 3). Никаких отдельных правил под второй ряд не нужно.
+ */
+
+.words-keyboard {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+    max-width: 500px;
+}
+
+.words-keyboard-row {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 4px;
+}
+
+/* Второй ряд короче на юнит с каждой стороны — сдвигаем его первую клавишу, и он
+   центрируется сам. */
+.words-keyboard-row:nth-child(2) > .words-key:first-child {
+    grid-column-start: 2;
+}
+
+.words-key {
+    grid-column: span 2;
+    min-height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background-color: var(--black30a);
+    background-color: color-mix(in srgb, currentColor 14%, transparent);
+    color: inherit;
+    font-size: 0.95em;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.words-key-wide {
+    grid-column: span 3;
+}
+
+.words-key:hover {
+    background-color: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.words-key-correct {
+    background-color: var(--words-correct);
+    color: #fff;
+}
+
+.words-key-present {
+    background-color: var(--words-present);
+    color: #fff;
+}
+
+.words-key-absent {
+    opacity: 0.4;
+}
+
+.words-colorblind .words-key-correct::after {
+    content: '●';
+    font-size: 0.7em;
+    vertical-align: super;
+}
+
+.words-colorblind .words-key-present::after {
+    content: '◐';
+    font-size: 0.7em;
+    vertical-align: super;
+}
+
+/* Анимации — украшение, а не сообщение: результат виден по цвету и подписи, отказ —
+   по красной рамке и тосту. */
+@media (prefers-reduced-motion: reduce) {
+    .words-row-reveal .words-tile,
+    .words-row.words-shake {
+        animation: none;
+    }
+}
+
+/* --- Слова: панель настроек --- */
+
+.words-settings-hint {
+    display: block;
+    margin-left: 24px;
+    opacity: 0.7;
+}
+
+.words-stats-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 4px 0 8px;
+    font-variant-numeric: tabular-nums;
+}
+
+.words-stats-metric {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+}
+
+.words-stats-metric span {
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.words-stats-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-variant-numeric: tabular-nums;
+}
+
+.words-stats-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85em;
+}
+
+.words-stats-bar-key,
+.words-stats-bar-value {
+    min-width: 1.4em;
+    text-align: center;
+    opacity: 0.8;
+}
+
+.words-stats-bar-track {
+    flex: 1 1 auto;
+    height: 12px;
+    border-radius: 3px;
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.words-stats-bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background-color: #4f8a45;
+}
+
+/* Поражения — своя полоса и свой цвет: их номера попытки не существует. */
+.words-stats-loss .words-stats-bar-fill {
+    background-color: color-mix(in srgb, currentColor 35%, transparent);
+}
+
 /* --- Узкие экраны --- */
 
 @media (max-width: 500px) {
@@ -933,5 +1276,49 @@
        краю, чтобы кнопка справа не прыгала по вертикали вслед за числом строк. */
     .reversi-info {
         align-items: flex-start;
+    }
+
+    .words-root {
+        /* Зазоры режем, а не плитку: сетка и клавиатура на 360×640 помещаются впритык,
+           и лишние 2 px между рядами стоят дороже, чем кажется. */
+        gap: 8px;
+        --words-gap: 4px;
+        width: 100%;
+    }
+
+    .words-info {
+        align-items: flex-start;
+    }
+
+    .words-keyboard-row {
+        gap: 3px;
+    }
+}
+
+/* Ландшафт телефона: высота ~360px вертикальной раскладкой не берётся никаким clamp —
+   сетка и клавиатура встают в две колонки. Скролл внутри модалки был бы хуже: в игре,
+   где жмут Enter, он источник промахов. */
+@media (orientation: landscape) and (max-height: 500px) {
+    .words-root {
+        --words-tile: clamp(24px, 11vh, 44px);
+
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        grid-template-areas:
+            'header header'
+            'grid   keyboard'
+            'status status';
+        align-items: center;
+        gap: 8px 14px;
+        width: 100%;
+    }
+
+    .words-header { grid-area: header; }
+    .words-grid { grid-area: grid; }
+    .words-keyboard { grid-area: keyboard; }
+    .words-status { grid-area: status; }
+
+    .words-key {
+        min-height: 30px;
     }
 }

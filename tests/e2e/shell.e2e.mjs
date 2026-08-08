@@ -14,11 +14,12 @@ export default async function run(env) {
         assertEqual(errors.length, 0, `ошибки STGames в консоли: ${errors.join(' | ')}`);
     });
 
-    await e2eTest(env, 'хаб открывается из wand-меню и показывает обе игры', async () => {
+    await e2eTest(env, 'хаб открывается из wand-меню и показывает все игры', async () => {
         await openHub(page);
         const ids = await page.$$eval('.stg-tile', (tiles) => tiles.map((t) => t.dataset.gameId));
-        assert(ids.includes('sudoku'), `в хабе нет судоку, только: ${ids.join(', ')}`);
-        assert(ids.includes('snake'), `в хабе нет змейки, только: ${ids.join(', ')}`);
+        for (const id of ['sudoku', 'snake', 'reversi']) {
+            assert(ids.includes(id), `в хабе нет игры ${id}, только: ${ids.join(', ')}`);
+        }
         await closeShell(page);
     });
 

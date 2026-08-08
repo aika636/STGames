@@ -122,6 +122,78 @@ export default async function run(env) {
 
         await closeShell(page);
     });
+
+    await e2eTest(env, 'слова: догадка с физической клавиатуры, раскраска и сохранение', async () => {
+        await resetSettings(page);
+        await openHub(page);
+        await openGame(page, 'words');
+
+        assertEqual(await page.locator('.words-tile').count(), 30, 'на поле не 30 плиток');
+
+        // Печатаем ПО КОДАМ клавиш, то есть ровно как игрок с EN-раскладкой: key придёт
+        // латиницей, и буква обязана разрешиться через позицию на ЙЦУКЕН. Это главный
+        // риск игры — и раскладка, и утечка букв в чат (буквы опаснее цифр судоку).
+        for (const code of GUESS_CODES) await page.keyboard.press(code);
+        assertEqual(await typedRow(page), GUESS, `в строке не «${GUESS}»`);
+
+        await page.keyboard.press('Enter');
+
+        // Раскраска: после подтверждения у каждой плитки строки есть состояние из ядра.
+        await page.waitForFunction(
+            () => [...document.querySelectorAll('.words-row')][0].querySelectorAll(
+                '[data-state="correct"], [data-state="present"], [data-state="absent"]',
+            ).length === 5,
+            null,
+            { timeout: 10_000 },
+        );
+
+        const chat = await page.inputValue('#send_textarea').catch(() => '');
+        assertEqual(chat, '', 'буквы ушли в поле ввода чата');
+
+        // Один шанс из 693, что загадано именно наше слово: партия тогда закончена и
+        // сохранять её нечего — это не поломка, а конец теста.
+        const finished = (await page.locator('.words-attempts').textContent()).includes('окончена');
+
+        await closeShell(page);
+        await flushSettings(page);
+
+        if (finished) {
+            assertEqual(
+                (await readSettings(page)).games?.words?.savedGame ?? null,
+                null,
+                'доигранная партия осталась в настройках',
+            );
+            return;
+        }
+
+        const saved = (await readSettings(page)).games?.words?.savedGame;
+        assert(saved, 'партия не сохранилась в настройках');
+        assertEqual(saved.guesses?.[0], GUESS, 'догадка сохранилась не целиком');
+
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#stgames_wand_button', { state: 'attached', timeout: 90_000 });
+        await dismissPopups(page);
+        await openHub(page);
+        await openGame(page, 'words');
+
+        assertEqual(
+            await page.locator('.words-row').first().textContent(),
+            GUESS,
+            'после перезагрузки первая строка не та же',
+        );
+
+        await closeShell(page);
+    });
+}
+
+// Слово из словаря разрешённых с повтором буквы: заодно проверяем, что раскраска
+// повторов считается как мультимножество, а не по первому совпадению.
+const GUESS = 'СЛОВО';
+// Те же буквы физическими клавишами EN-раскладки: С=KeyC, Л=KeyK, О=KeyJ, В=KeyD.
+const GUESS_CODES = ['KeyC', 'KeyK', 'KeyJ', 'KeyD', 'KeyJ'];
+
+function typedRow(page) {
+    return page.locator('.words-row').first().textContent();
 }
 
 function canvasSignature(page) {

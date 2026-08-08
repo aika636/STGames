@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 **STGames** — клиентское UI-расширение SillyTavern: платформа мини-игр с хабом, из которого
-игры открываются в модальном окне поверх чата. Сейчас в каталоге судоку, змейка и реверси;
+игры открываются в модальном окне поверх чата. Сейчас в каталоге судоку, змейка, реверси
+и слова (русский вордл);
 как добавить свою игру — `docs/games.md`. LLM в играх **не участвует**, `ctx.chat` не читается
 и не пишется, сетевых вызовов нет. Точки соприкосновения с ST — кнопка в wand-меню, попап
 и `extensionSettings` (настройки, партии, статистика).
@@ -36,11 +37,14 @@ src/settings.js  # extensionSettings.STGames, merge-on-load, миграция с
 src/registry.js  # реестр игр: register()/list()/get(), проверка контракта
 src/shell/       # оболочка: modal (попап и сессия), hub (список игр), launcher,
                  # settings-ui (общая панель настроек)
-src/games/       # по папке на игру: sudoku/, snake/, reversi/ — внутри core/ (чистая
-                 # логика) и ui/ (DOM); контракт игры — src/registry.js и docs/games.md
+src/games/       # по папке на игру: sudoku/, snake/, reversi/, words/ — внутри core/
+                 # (чистая логика) и ui/ (DOM); у words/ ещё data/ — словари, они
+                 # грузятся динамическим import() и собираются офлайн tools/
+                 # контракт игры — src/registry.js и docs/games.md
 tests/           # node-тесты; ядро — без зависимостей, UI — под jsdom (_harness.mjs)
 tests/e2e/       # e2e под Playwright в живой ST: _st.mjs (обвязка), run.mjs, *.e2e.mjs
-style.css        # стили, префиксы .stg-, .sudoku-, .snake-, .reversi-
+style.css        # стили, префиксы .stg-, .sudoku-, .snake-, .reversi-, .words-
+tools/           # офлайн-скрипты, в расширение не входят (сборка словарей «Слов»)
 settings.html    # каркас панели в Extensions drawer
 docs/            # games (контракт игры) / roadmap (фазы, риски) / development
                  # (состояние, команды) / sillytavern-api (проверенные API ST 1.18.0)
@@ -58,6 +62,7 @@ node tests/run.mjs        # все тесты (свой раннер, подка
 node tests/run.mjs sudoku # фильтр: только судоку
 node tests/run.mjs snake  # фильтр: только змейка
 node tests/run.mjs reversi # фильтр: только реверси
+node tests/run.mjs words  # фильтр: только слова
 STGAMES_ST_DIR=<путь к ST> node tests/e2e/run.mjs   # e2e в живой таверне под Playwright
 ./deploy.sh               # залить на тестовый ST + хардрелоад вкладки
 ```
@@ -78,7 +83,7 @@ STGAMES_ST_DIR=<путь к ST> node tests/e2e/run.mjs   # e2e в живой т�
 ## Conventions
 
 - Namespace: `MODULE_NAME = 'STGames'`, CSS-классы с префиксами `stg-` (оболочка и хаб),
-  `sudoku-`, `snake-` (игры), настройки в `ctx.extensionSettings.STGames`
+  `sudoku-`, `snake-`, `reversi-`, `words-` (игры), настройки в `ctx.extensionSettings.STGames`
   (camelCase `extensionSettings`, не `extension_settings`).
 - Настройки: замороженные дефолты в `game.defaults` + мерж недостающих ключей при чтении;
   ключи верхнего уровня STGames (`version`/`lastGame`/`games`) правит только `src/settings.js`.

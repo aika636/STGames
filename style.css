@@ -1094,6 +1094,10 @@
     grid-column: span 2;
     min-height: 40px;
     padding: 0;
+    /* Кнопка внутри чужого DOM: снимаем всё, что мог навесить ST или браузер. Без
+       этого мобильные WebView рисуют клавишу системным стилем и заливка не видна. */
+    appearance: none;
+    -webkit-appearance: none;
     border: none;
     border-radius: 4px;
     background-color: var(--black30a);
@@ -1111,16 +1115,22 @@
     grid-column: span 3;
 }
 
-.words-key:hover {
-    background-color: color-mix(in srgb, currentColor 22%, transparent);
+/* Только для настоящего указателя: тач-браузеры оставляют :hover на последней тронутой
+   клавише до следующего тапа, и подсветка навсегда перекрывала бы раскраску. */
+@media (hover: hover) {
+    .words-key:hover {
+        background-color: color-mix(in srgb, currentColor 22%, transparent);
+    }
 }
 
-.words-key-correct {
+/* Класс продублирован намеренно: раскраска обязана быть специфичнее и :hover (0,2,0),
+   и любого одноклассового правила темы — иначе подсказка о буквах пропадает. */
+.words-key.words-key-correct {
     background-color: var(--words-correct);
     color: #fff;
 }
 
-.words-key-present {
+.words-key.words-key-present {
     background-color: var(--words-present);
     color: #fff;
 }

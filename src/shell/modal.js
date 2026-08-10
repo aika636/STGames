@@ -77,7 +77,7 @@ export async function openShell({ gameId = null, args = {} } = {}) {
     const showHub = () => {
         unmount();
         screen.textContent = '';
-        title.textContent = 'Мини-игры';
+        title.textContent = 'STGames';
         backBtn.hidden = true;
 
         const hub = createHub({
@@ -191,7 +191,7 @@ function showFallbackOverlay(content) {
         dialog.className = 'stg-dialog';
         dialog.setAttribute('role', 'dialog');
         dialog.setAttribute('aria-modal', 'true');
-        dialog.setAttribute('aria-label', 'Мини-игры');
+        dialog.setAttribute('aria-label', 'STGames');
 
         const close = document.createElement('div');
         close.className = 'stg-close fa-solid fa-circle-xmark';

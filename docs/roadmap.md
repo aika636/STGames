@@ -218,7 +218,7 @@ deploy.sh              # rsync на тестовый ST (не в git)
 * **Реестр игр** (`src/registry.js`) — `register()`/`list()`/`get()` с проверкой контракта
   (id, title, defaults, mount; `defaults` замораживается). Полный контракт — `docs/games.md`.
 * **Оболочка** (`src/shell/`) — `modal.js` (попап, одна сессия, `openShell({gameId, args})`,
-  монтирование/размонтирование экранов, фолбэк-оверлей), `launcher.js` (кнопка «Мини-игры»
+  монтирование/размонтирование экранов, фолбэк-оверлей), `launcher.js` (кнопка «STGames»
   в wand-меню, `/stgames` и `/имя_игры`), `settings-ui.js` (общая панель: по блоку на игру,
   `renderAllStats()`), `hub.js` (список игр плитками).
 * **Судоку как игра хаба** — `src/games/sudoku/index.js` по контракту реестра; модули

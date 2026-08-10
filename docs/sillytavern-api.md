@@ -101,7 +101,7 @@ content, with a small X in the corner». Ровно то, что нужно до
 ```html
 <div class="list-group-item flex-container flexGap5">
     <div class="fa-solid fa-dice extensionsMenuExtensionButton"></div>
-    <span>Мини-игры</span>
+    <span>STGames</span>
 </div>
 ```
 

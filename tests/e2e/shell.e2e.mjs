@@ -9,7 +9,7 @@ export default async function run(env) {
 
     await e2eTest(env, 'расширение загрузилось без ошибок в консоли', async () => {
         const button = await page.$('#stgames_wand_button');
-        assert(button, 'кнопки «Мини-игры» нет в wand-меню');
+        assert(button, 'кнопки «STGames» нет в wand-меню');
         const errors = stgamesErrors(env);
         assertEqual(errors.length, 0, `ошибки STGames в консоли: ${errors.join(' | ')}`);
     });

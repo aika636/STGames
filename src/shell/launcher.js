@@ -21,13 +21,13 @@ export function initWandButton() {
     const button = document.createElement('div');
     button.id = WAND_BUTTON_ID;
     button.className = 'list-group-item flex-container flexGap5';
-    button.title = 'Открыть мини-игры';
+    button.title = 'Открыть STGames — мини-игры';
 
     const icon = document.createElement('div');
     icon.className = 'fa-solid fa-dice extensionsMenuExtensionButton';
 
     const label = document.createElement('span');
-    label.textContent = 'Мини-игры';
+    label.textContent = 'STGames';
 
     button.append(icon, label);
     button.addEventListener('click', () => {

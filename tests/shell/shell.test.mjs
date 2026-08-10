@@ -188,7 +188,7 @@ test('initWandButton добавляет ровно один пункт в wand-�
 
     const button = document.getElementById('stgames_wand_button');
     assert(button.querySelector('.extensionsMenuExtensionButton'), 'иконка на месте');
-    assertEqual(button.textContent.trim(), 'Мини-игры', 'подпись кнопки');
+    assertEqual(button.textContent.trim(), 'STGames', 'подпись кнопки');
 });
 
 test('initSlashCommands регистрирует /stgames и /sudoku', () => {

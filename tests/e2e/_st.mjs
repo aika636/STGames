@@ -136,9 +136,12 @@ async function waitFor(predicate, timeoutMs, message) {
 /**
  * Открывает таверну и дожидается, пока расширение объявится в wand-меню.
  * Возвращает страницу и живой список ошибок консоли — тесты проверяют, что он пуст.
+ *
+ * `options` уходят в newContext как есть: так набор мобильной вёрстки поднимает свой
+ * контекст с узким экраном и hasTouch, не трогая основной прогон.
  */
-export async function openTavern(browser, url) {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+export async function openTavern(browser, url, options = {}) {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, ...options });
     const page = await context.newPage();
 
     const errors = [];
@@ -185,6 +188,12 @@ const GAME_ROOTS = Object.freeze({
     words: '.words-grid',
     minesweeper: '.minesweeper-board',
     nonogram: '.nonogram-board',
+    // Кроссворд грузит пул головоломок динамическим import(): корень появляется сразу,
+    // а сетка — после загрузки, поэтому ждём именно сетку (см. src/games/crossword/ui/game.js).
+    crossword: '.crossword-board',
+    // Балда грузит словарь динамическим import(): корень появляется сразу, а поле —
+    // после загрузки, поэтому ждём именно поле (см. src/games/balda/ui/game.js).
+    balda: '.balda-board',
 });
 
 export async function openGame(page, id) {

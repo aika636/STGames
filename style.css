@@ -1234,6 +1234,486 @@
     background-color: color-mix(in srgb, currentColor 35%, transparent);
 }
 
+/* --- Окно игры: сапёр --- */
+
+.minesweeper-root {
+    /* Размер поля ограничен и по ширине, и по высоте: под доской строка статуса и
+       подсказка, над ней — шапка с селектором уровня. Потолок на десктопе держит окно
+       в разумных пределах, как у реверси. */
+    --minesweeper-size: clamp(240px, min(88vw, 60vh), 440px);
+
+    --minesweeper-accent: var(--SmartThemeQuoteColor, currentColor);
+    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
+       вторую строку и оставит первую. */
+    --minesweeper-line: var(--SmartThemeBorderColor, currentColor);
+    --minesweeper-line: color-mix(in srgb, currentColor 20%, transparent);
+    /* Закрытая клетка светлее открытой в тёмной теме и темнее в светлой — заливка
+       считается от currentColor, поэтому обе темы получаются одним правилом. */
+    --minesweeper-closed: var(--white30a);
+    --minesweeper-closed: color-mix(in srgb, currentColor 13%, transparent);
+    --minesweeper-open: color-mix(in srgb, currentColor 4%, transparent);
+    --minesweeper-boom: #c0392b;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
+    color: var(--SmartThemeBodyColor);
+}
+
+.minesweeper-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: var(--minesweeper-size);
+    max-width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+
+.minesweeper-select {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
+}
+
+.minesweeper-info {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    min-width: 0;
+}
+
+.minesweeper-counter,
+.minesweeper-timer {
+    font-size: 0.95em;
+    opacity: 0.9;
+}
+
+.minesweeper-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.minesweeper-status {
+    min-height: 1.2em;
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.minesweeper-hint {
+    font-size: 0.8em;
+    opacity: 0.6;
+}
+
+/* --- Поле --- */
+
+.minesweeper-board-box {
+    width: var(--minesweeper-size);
+    max-width: 100%;
+}
+
+.minesweeper-board {
+    display: grid;
+    grid-template-columns: repeat(var(--minesweeper-cols), 1fr);
+    grid-template-rows: repeat(var(--minesweeper-rows), 1fr);
+    gap: 1px;
+    width: 100%;
+    /* Высота считается от фактической ширины: 88vw не знает про поля попапа ST, и на
+       телефоне max-width режет доску уже желаемой (грабли Фазы 5). */
+    aspect-ratio: var(--minesweeper-cols) / var(--minesweeper-rows);
+    /* Контейнер для cqw ниже: размер шрифта в клетке берётся от реальной ширины поля,
+       а не от желаемой. */
+    container-type: inline-size;
+    padding: 2px;
+    border: 1px solid var(--minesweeper-line);
+    border-radius: 8px;
+    background-color: var(--minesweeper-line);
+    overflow: hidden;
+    /* Ни прокрутки, ни зума по двойному тапу: долгое нажатие — это флажок, и браузер
+       не должен принимать его за жест выделения. */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.minesweeper-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Ширина клетки — 100cqw/cols, цифра занимает от неё чуть больше половины: так
+       восьмёрка помещается и на поле 16×16, и на 9×9. */
+    font-size: calc(58cqw / var(--minesweeper-cols));
+    font-weight: 700;
+    line-height: 1;
+    background-color: var(--minesweeper-closed);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.minesweeper-cell:hover:not(.minesweeper-open) {
+    background-color: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.minesweeper-cell.minesweeper-open {
+    background-color: var(--minesweeper-open);
+    cursor: default;
+}
+
+/* Цвета цифр фиксированные, а не из темы: цифра здесь — не украшение, а сообщение, и
+   различать их нужно с одного взгляда. Тона средней светлоты читаются и на тёмной
+   теме ST, и на светлой. */
+.minesweeper-n1 { color: #4a90d9; }
+.minesweeper-n2 { color: #4f9d55; }
+.minesweeper-n3 { color: #d05a4e; }
+.minesweeper-n4 { color: #8f6fd0; }
+.minesweeper-n5 { color: #c98b3a; }
+.minesweeper-n6 { color: #3aa8a0; }
+.minesweeper-n7 { color: #b06fa8; }
+.minesweeper-n8 { color: #8a8a8a; }
+
+/* Флажок и мина — псевдоэлементами, а не текстом клетки: текст занят цифрой, и
+   переключать его туда-сюда значило бы каждый раз выбирать, что показать. */
+.minesweeper-cell.minesweeper-flag::after,
+.minesweeper-cell.minesweeper-mine::after,
+.minesweeper-cell.minesweeper-wrong::before {
+    position: absolute;
+    font-size: 0.9em;
+    line-height: 1;
+}
+
+.minesweeper-cell.minesweeper-flag::after {
+    content: '🚩';
+}
+
+.minesweeper-cell.minesweeper-mine::after {
+    content: '💣';
+}
+
+/* Флажок не на мине: показывается сама мина, которой там не было, и перечёркивается.
+   Без этого после взрыва непонятно, где именно была ошибка. */
+.minesweeper-cell.minesweeper-wrong::before {
+    content: '🚩';
+    opacity: 0.45;
+}
+
+.minesweeper-cell.minesweeper-wrong::after {
+    content: '✕';
+    position: absolute;
+    color: var(--minesweeper-boom);
+    font-size: 1em;
+}
+
+.minesweeper-cell.minesweeper-boom {
+    background-color: var(--minesweeper-boom);
+}
+
+.minesweeper-cell.minesweeper-cursor {
+    outline: 2px dashed var(--minesweeper-accent);
+    outline-offset: -2px;
+}
+
+.minesweeper-cell:focus-visible {
+    outline: 2px solid var(--minesweeper-accent);
+    outline-offset: -2px;
+}
+
+/* --- Сапёр: панель настроек --- */
+
+.stg-settings .stg-row.minesweeper-stats-header {
+    justify-content: space-between;
+}
+
+.minesweeper-stats {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 2px 12px;
+    margin: 4px 0 8px;
+    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+}
+
+.minesweeper-stats-row {
+    display: contents;
+}
+
+.minesweeper-stats-row > span:not(:first-child) {
+    text-align: right;
+}
+
+.minesweeper-stats-row.minesweeper-stats-head > span {
+    opacity: 0.6;
+    font-size: 0.85em;
+}
+
+/* --- Окно игры: нонограмма --- */
+
+.nonogram-root {
+    /* Под подсказки уходит примерно четверть поля по каждой стороне, поэтому потолок
+       больше, чем у сапёра: сама сетка получается меньше своего размера. */
+    --nonogram-size: clamp(240px, min(90vw, 58vh), 460px);
+
+    --nonogram-accent: var(--SmartThemeQuoteColor, currentColor);
+    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
+       вторую строку и оставит первую. */
+    --nonogram-line: var(--SmartThemeBorderColor, currentColor);
+    --nonogram-line: color-mix(in srgb, currentColor 18%, transparent);
+    /* Толстая линия каждые пять клеток — та, по которой отсчитывают ряды. */
+    --nonogram-block: color-mix(in srgb, currentColor 45%, transparent);
+    --nonogram-fill: color-mix(in srgb, currentColor 82%, transparent);
+    --nonogram-wrong: #c0392b;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
+    color: var(--SmartThemeBodyColor);
+}
+
+.nonogram-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: var(--nonogram-size);
+    max-width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+
+.nonogram-select {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
+}
+
+.nonogram-info {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    min-width: 0;
+}
+
+.nonogram-left,
+.nonogram-timer {
+    font-size: 0.95em;
+    opacity: 0.9;
+}
+
+.nonogram-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.nonogram-tools {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: var(--nonogram-size);
+    max-width: 100%;
+}
+
+.nonogram-mode {
+    flex: 0 0 auto;
+}
+
+/* Режим крестика отмечается рамкой акцента: подпись меняется тоже, но глазом ловится
+   именно рамка. */
+.nonogram-mode.nonogram-mode-cross {
+    box-shadow: inset 0 0 0 2px var(--nonogram-accent);
+}
+
+.nonogram-status {
+    font-size: 0.85em;
+    opacity: 0.85;
+    min-height: 1.2em;
+}
+
+/* --- Поле и подсказки --- */
+
+.nonogram-board-box {
+    width: var(--nonogram-size);
+    max-width: 100%;
+}
+
+/* Четыре области: пустой угол, подсказки столбцов, подсказки строк и сама сетка.
+   Ширина колонки подсказок задаётся в долях клетки, поэтому на любом уровне поле
+   остаётся квадратным, а числа — читаемыми. */
+.nonogram-layout {
+    --nonogram-clue-cells: 4;
+
+    display: grid;
+    grid-template-columns: calc(100% * var(--nonogram-clue-cells) / (var(--nonogram-cols) + var(--nonogram-clue-cells))) 1fr;
+    grid-template-rows: auto 1fr;
+    width: 100%;
+    container-type: inline-size;
+    /* Ни прокрутки, ни зума по двойному тапу: поле рисуется росчерком, и браузер не
+       должен принимать его за жест прокрутки. */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.nonogram-clues {
+    display: grid;
+    /* Число подсказки считается от ширины поля: на 15 столбцах шрифт мельче, чем на
+       пяти, ровно во столько же раз. */
+    font-size: calc(46cqw / var(--nonogram-cols));
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.9;
+}
+
+.nonogram-clues-cols {
+    grid-column: 2;
+    grid-template-columns: repeat(var(--nonogram-cols), 1fr);
+    align-items: end;
+}
+
+.nonogram-clues-rows {
+    grid-row: 2;
+    grid-template-rows: repeat(var(--nonogram-rows), 1fr);
+    justify-items: end;
+}
+
+.nonogram-clue {
+    display: flex;
+    padding: 2px;
+}
+
+.nonogram-clue-col {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 1px;
+}
+
+.nonogram-clue-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
+/* Разделители каждые пять рядов — те же, что на самом поле: подсказки и сетка должны
+   читаться как одна разлиновка. */
+.nonogram-clue.nonogram-block {
+    box-shadow: inset 1px 0 0 var(--nonogram-block);
+}
+
+.nonogram-clue-row.nonogram-block {
+    box-shadow: inset 0 1px 0 var(--nonogram-block);
+}
+
+/* Выполненная подсказка гаснет — глаз перестаёт её перечитывать. */
+.nonogram-clue.nonogram-done {
+    opacity: 0.35;
+}
+
+.nonogram-board {
+    grid-column: 2;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(var(--nonogram-cols), 1fr);
+    grid-template-rows: repeat(var(--nonogram-rows), 1fr);
+    /* Высота считается от фактической ширины сетки, а не от --nonogram-size: поля
+       попапа ST в vw не входят (грабли Фазы 5). */
+    aspect-ratio: var(--nonogram-cols) / var(--nonogram-rows);
+    border: 1px solid var(--nonogram-block);
+    background-color: color-mix(in srgb, currentColor 4%, transparent);
+}
+
+.nonogram-cell {
+    position: relative;
+    border-top: 1px solid var(--nonogram-line);
+    border-left: 1px solid var(--nonogram-line);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nonogram-cell.nonogram-block-left {
+    border-left-color: var(--nonogram-block);
+}
+
+.nonogram-cell.nonogram-block-top {
+    border-top-color: var(--nonogram-block);
+}
+
+.nonogram-cell.nonogram-fill {
+    background-color: var(--nonogram-fill);
+}
+
+/* Крестик — псевдоэлементом, а не текстом: символ в клетке пришлось бы масштабировать
+   под размер поля, а две линии одинаково выглядят на 5×5 и на 15×15. */
+.nonogram-cell.nonogram-cross::before,
+.nonogram-cell.nonogram-cross::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 20%;
+    width: 60%;
+    height: 1px;
+    background-color: currentColor;
+    opacity: 0.55;
+}
+
+.nonogram-cell.nonogram-cross::before {
+    transform: rotate(45deg);
+}
+
+.nonogram-cell.nonogram-cross::after {
+    transform: rotate(-45deg);
+}
+
+/* Ошибка — только по настройке: по умолчанию нонограмма ничего не подсказывает. */
+.nonogram-cell.nonogram-wrong {
+    background-color: var(--nonogram-wrong);
+}
+
+.nonogram-cell.nonogram-cursor {
+    outline: 2px dashed var(--nonogram-accent);
+    outline-offset: -2px;
+}
+
+.nonogram-cell:focus-visible {
+    outline: 2px solid var(--nonogram-accent);
+    outline-offset: -2px;
+}
+
+/* --- Нонограмма: панель настроек --- */
+
+.stg-settings .stg-row.nonogram-stats-header {
+    justify-content: space-between;
+}
+
+.nonogram-stats {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 2px 12px;
+    margin: 4px 0 8px;
+    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+}
+
+.nonogram-stats-row {
+    display: contents;
+}
+
+.nonogram-stats-row > span:not(:first-child) {
+    text-align: right;
+}
+
+.nonogram-stats-row.nonogram-stats-head > span {
+    opacity: 0.6;
+    font-size: 0.85em;
+}
+
 /* --- Узкие экраны --- */
 
 @media (max-width: 500px) {
@@ -1293,6 +1773,43 @@
        краю, чтобы кнопка справа не прыгала по вертикали вслед за числом строк. */
     .reversi-info {
         align-items: flex-start;
+    }
+
+    .minesweeper-root {
+        /* Под полем только строка статуса — доля высоты больше, чем у судоку. Шире
+           92vw поле не растёт: на 16 столбцах клетка и так меньше пальца, и лишние
+           проценты ширины дают меньше, чем стоят полями попапа. */
+        --minesweeper-size: min(92vw, 62vh, 440px);
+        gap: 8px;
+    }
+
+    /* На телефоне шапка не помещается одной строкой: селектор уровня уходит на свою. */
+    .minesweeper-header {
+        flex-wrap: wrap;
+        justify-content: space-between;
+    }
+
+    .minesweeper-select {
+        max-width: 100%;
+        flex: 1 1 100%;
+        order: -1;
+    }
+
+    .nonogram-root {
+        --nonogram-size: min(94vw, 60vh, 460px);
+        gap: 8px;
+    }
+
+    /* Как и у сапёра: селектор уровня уходит на свою строку, счётчики и кнопка
+       остаются одной. */
+    .nonogram-header {
+        flex-wrap: wrap;
+    }
+
+    .nonogram-select {
+        max-width: 100%;
+        flex: 1 1 100%;
+        order: -1;
     }
 
     .words-root {

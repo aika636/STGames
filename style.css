@@ -573,10 +573,13 @@
 }
 
 .snake-stage {
+    /* Квадрат по факту, а не по желанию: max-width режет ширину до попапа ST раньше,
+       чем --snake-size, а высота раньше оставалась желаемой — отсюда овальная еда на
+       узком экране. aspect-ratio держит высоту равной фактической, а не расчётной ширине. */
     position: relative;
     width: var(--snake-size);
     max-width: 100%;
-    height: var(--snake-size);
+    aspect-ratio: 1;
 }
 
 .snake-view {
@@ -1265,11 +1268,18 @@
 }
 
 .minesweeper-header {
+    /* flex-wrap здесь не ставим: строка и так ужимается (см. .minesweeper-info и
+       .minesweeper-select) — перенос всей строки на десктопе ломает то, что и без
+       него помещалось в одну (см. крайний случай у кроссворда). */
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    width: var(--minesweeper-size);
+    /* Не var(--minesweeper-size): в ландшафте поле ограничено высотой и уже контента
+       шапки — жёсткая привязка к его ширине сама обрезала бы подпись уровня раньше,
+       чем находилось место. fit-content — как у ширины самого корня (.minesweeper-root):
+       шапка вписывается в реально доступное место, а не в размер поля. */
+    width: fit-content;
     max-width: 100%;
     font-variant-numeric: tabular-nums;
 }
@@ -1281,9 +1291,12 @@
 }
 
 .minesweeper-info {
+    /* Счётчик и таймер в одну строку не всегда помещаются — переносим внутри блока,
+       как у реверси/слов/балды, а не даём тексту вылезать поверх кнопки. */
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    gap: 12px;
+    gap: 2px 12px;
     min-width: 0;
 }
 
@@ -1478,11 +1491,13 @@
 }
 
 .nonogram-header {
+    /* flex-wrap здесь не ставим: см. комментарий у .minesweeper-header. */
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    width: var(--nonogram-size);
+    /* Не var(--nonogram-size): см. комментарий у .minesweeper-header — то же решение. */
+    width: fit-content;
     max-width: 100%;
     font-variant-numeric: tabular-nums;
 }
@@ -1494,9 +1509,12 @@
 }
 
 .nonogram-info {
+    /* Счётчик и таймер в одну строку не всегда помещаются — переносим внутри блока,
+       как у реверси/слов/балды, а не даём тексту вылезать поверх кнопки. */
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    gap: 12px;
+    gap: 2px 12px;
     min-width: 0;
 }
 
@@ -1812,6 +1830,18 @@
         order: -1;
     }
 
+    /* Как и у сапёра с нонограммой: селектор уровня уходит на свою строку, счётчик
+       слов и таймер остаются одной. */
+    .crossword-header {
+        flex-wrap: wrap;
+    }
+
+    .crossword-select {
+        max-width: 100%;
+        flex: 1 1 100%;
+        order: -1;
+    }
+
     .words-root {
         /* Зазоры режем, а не плитку: сетка и клавиатура на 360×640 помещаются впритык,
            и лишние 2 px между рядами стоят дороже, чем кажется. */
@@ -1855,4 +1885,567 @@
     .words-key {
         min-height: 30px;
     }
+}
+
+/* --- Окно игры: балда ---
+ *
+ * Бюджет высоты на 360×640: попап 90vh ≈ 576px, минус шапка попапа и topbar ≈ 490px.
+ * Под полем живут строка статуса (~18), три кнопки действий (~34), клавиатура из трёх
+ * рядов (~104) и два столбца собранных слов (~34) — вместе с шапкой и зазорами это
+ * около 250px, поэтому поле ограничено И по ширине, И по высоте (грабли Фазы 5:
+ * ограничение только по ширине выносит клавиатуру за нижний край экрана).
+ */
+
+.balda-root {
+    --balda-size: clamp(160px, min(86vw, 34vh), 320px);
+    --balda-line: var(--SmartThemeBorderColor, currentColor);
+    --balda-line: color-mix(in srgb, currentColor 26%, transparent);
+    --balda-accent: var(--SmartThemeQuoteColor, #6ca0dc);
+    /* Заливка занятой клетки: своего цвета у неё нет — только приглушённый текущий,
+       чтобы поле читалось в обеих темах ST. */
+    --balda-fill: var(--black30a);
+    --balda-fill: color-mix(in srgb, currentColor 10%, transparent);
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    color: var(--SmartThemeBodyColor);
+}
+
+.balda-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+
+.balda-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    min-width: 0;
+}
+
+.balda-turn,
+.balda-level {
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.balda-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.balda-loading,
+.balda-status {
+    min-height: 1.2em;
+    font-size: 0.85em;
+    opacity: 0.9;
+    text-align: center;
+}
+
+/* --- Поле --- */
+
+.balda-board {
+    display: grid;
+    grid-template-columns: repeat(var(--balda-cells, 5), 1fr);
+    grid-auto-rows: 1fr;
+    gap: 3px;
+    /* Квадрат: сторона ограничена и вьюпортом по ширине, и по высоте. */
+    width: var(--balda-size);
+    height: var(--balda-size);
+    /* Без этого браузер считает росчерк по клеткам прокруткой попапа и ход не
+       набирается вовсе (грабли нонограммы, Фаза 11). */
+    touch-action: none;
+    user-select: none;
+}
+
+.balda-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--balda-line);
+    border-radius: 4px;
+    font-size: calc(var(--balda-size) / var(--balda-cells, 5) * 0.46);
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.balda-cell.balda-filled {
+    background-color: var(--balda-fill);
+}
+
+/* Пустая клетка, выбранная под новую букву: рамка акцентом, буквы ещё нет. */
+.balda-cell.balda-selected {
+    border-color: var(--balda-accent);
+    box-shadow: inset 0 0 0 1px var(--balda-accent);
+}
+
+/* Поставленная, но не подтверждённая буква — пунктиром: она исчезнет, если ход
+   отменить, и не должна выглядеть как часть поля. */
+.balda-cell.balda-pending {
+    border: 2px dashed var(--balda-accent);
+    color: var(--balda-accent);
+}
+
+.balda-cell.balda-path {
+    background-color: var(--balda-accent);
+    color: #fff;
+}
+
+.balda-cell.balda-pending.balda-path {
+    color: #fff;
+}
+
+/* Номер шага в углу клетки: без него набранное слово читается только в строке
+   статуса, и промах виден лишь по букве. */
+.balda-cell.balda-path::after {
+    content: attr(data-order);
+    position: absolute;
+    top: 1px;
+    left: 3px;
+    font-size: 0.4em;
+    font-weight: 600;
+    line-height: 1;
+    opacity: 0.85;
+}
+
+.balda-glyph {
+    pointer-events: none;
+}
+
+/* --- Кнопки хода --- */
+
+.balda-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+}
+
+.balda-action {
+    white-space: nowrap;
+}
+
+.balda-action:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+/* --- Экранная клавиатура ---
+ *
+ * Обязательна, а не опциональна: в окне игры нет ни одного поля ввода, поэтому на
+ * телефоне системная клавиатура не появится вовсе и букву физически нечем поставить.
+ * Все три ряда — ровно 24 юнита: 12 букв по 2, 11 букв по 2 (со сдвигом на юнит) и
+ * 9 букв по 2 (со сдвигом на три).
+ */
+
+.balda-keyboard {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    max-width: 460px;
+}
+
+.balda-keyboard.balda-keyboard-off {
+    opacity: 0.45;
+}
+
+.balda-keyboard-row {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 3px;
+}
+
+.balda-keyboard-row:nth-child(2) > .balda-key:first-child {
+    grid-column-start: 2;
+}
+
+.balda-keyboard-row:nth-child(3) > .balda-key:first-child {
+    grid-column-start: 4;
+}
+
+.balda-key {
+    grid-column: span 2;
+    min-height: 32px;
+    padding: 0;
+    /* Кнопка внутри чужого DOM: снимаем всё, что мог навесить ST или браузер. Без
+       этого мобильные WebView рисуют клавишу системным стилем. */
+    appearance: none;
+    -webkit-appearance: none;
+    border: none;
+    border-radius: 4px;
+    background-color: var(--black30a);
+    background-color: color-mix(in srgb, currentColor 14%, transparent);
+    color: inherit;
+    font-size: 0.95em;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Только для настоящего указателя: тач-браузеры оставляют :hover на последней тронутой
+   клавише до следующего тапа. */
+@media (hover: hover) {
+    .balda-key:hover {
+        background-color: color-mix(in srgb, currentColor 22%, transparent);
+    }
+}
+
+/* --- Собранные слова --- */
+
+.balda-words {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+    width: 100%;
+    font-size: 0.8em;
+}
+
+.balda-words-title {
+    display: block;
+    opacity: 0.85;
+}
+
+/* Список растёт всю партию, поэтому высота ограничена и прокручивается внутри себя:
+   иначе к концу партии он выдавил бы клавиатуру за нижний край окна. */
+.balda-words-list {
+    max-height: 3.4em;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    opacity: 0.8;
+}
+
+/* --- Балда: панель настроек --- */
+
+.balda-stats {
+    display: table;
+    width: 100%;
+    margin: 4px 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.balda-stats-row {
+    display: table-row;
+}
+
+.balda-stats-row > span {
+    display: table-cell;
+    padding: 1px 6px 1px 0;
+    font-size: 0.9em;
+}
+
+.balda-stats-head > span {
+    font-weight: 700;
+    opacity: 0.8;
+}
+
+@media (max-width: 480px) {
+    .balda-root {
+        /* Зазоры режем, а не поле: клавиатура и списки слов на 360×640 помещаются
+           впритык, и лишние пиксели между блоками стоят дороже, чем кажется. */
+        gap: 6px;
+    }
+
+    .balda-info {
+        align-items: flex-start;
+    }
+}
+
+/* Ландшафт телефона: высота ~360px вертикальной раскладкой не берётся никаким clamp —
+   поле и клавиатура встают в две колонки (то же решение, что в «Словах»). */
+@media (orientation: landscape) and (max-height: 500px) {
+    .balda-root {
+        --balda-size: clamp(140px, 62vh, 260px);
+
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        grid-template-areas:
+            'header header'
+            'board  keyboard'
+            'board  actions'
+            'status words';
+        align-items: center;
+        gap: 6px 12px;
+    }
+
+    .balda-header { grid-area: header; }
+    .balda-board { grid-area: board; }
+    .balda-status { grid-area: status; }
+    .balda-actions { grid-area: actions; }
+    .balda-keyboard { grid-area: keyboard; }
+    .balda-words { grid-area: words; }
+
+    .balda-key {
+        min-height: 26px;
+    }
+}
+
+/* --- Окно игры: кроссворд-скелет --- */
+
+.crossword-root {
+    /* Сетка ограничена И по ширине, И по высоте — грабли Фазы 5. Бюджет высоты на
+       360×640: попап 90vh ≈ 576px, минус шапка попапа и topbar ≈ 490px; шапка игры ~36
+       + сетка ~256 + банк слов ~140 + строка статуса ~24 + зазоры ≈ 480. Банк на сложном
+       уровне — до 28 слов, поэтому потолок по высоте ниже, чем у соседних игр: место
+       нужно не только полю. */
+    --crossword-size: clamp(200px, min(88vw, 40vh), 420px);
+
+    --crossword-accent: var(--SmartThemeQuoteColor, currentColor);
+    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
+       вторую строку и оставит первую. */
+    --crossword-line: var(--SmartThemeBorderColor, currentColor);
+    --crossword-line: color-mix(in srgb, currentColor 22%, transparent);
+    --crossword-block: var(--SmartThemeBorderColor, currentColor);
+    --crossword-block: color-mix(in srgb, currentColor 55%, transparent);
+    /* Серый с альфой читается и на светлой, и на тёмной теме: это фолбэк, а не цвет
+       по умолчанию — движок с color-mix возьмёт вторую строку. */
+    --crossword-open: rgba(128, 128, 128, 0.08);
+    --crossword-open: color-mix(in srgb, currentColor 4%, transparent);
+    --crossword-active: rgba(128, 128, 128, 0.28);
+    --crossword-active: color-mix(in srgb, var(--SmartThemeQuoteColor, currentColor) 20%, transparent);
+    --crossword-chip: rgba(128, 128, 128, 0.2);
+    --crossword-chip: color-mix(in srgb, currentColor 12%, transparent);
+    --crossword-wrong: #c0392b;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
+    color: var(--SmartThemeBodyColor);
+}
+
+.crossword-header {
+    /* flex-wrap здесь не ставим: см. комментарий у .minesweeper-header. */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    /* Не var(--crossword-size): см. комментарий у .minesweeper-header — то же решение. */
+    width: fit-content;
+    max-width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+
+.crossword-select {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
+}
+
+.crossword-info {
+    /* Счётчик слов и таймер в одну строку не всегда помещаются — переносим внутри блока,
+       как у реверси/слов/балды, а не даём тексту вылезать поверх кнопки. */
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 12px;
+    min-width: 0;
+}
+
+.crossword-left,
+.crossword-timer {
+    font-size: 0.95em;
+    opacity: 0.9;
+    white-space: nowrap;
+}
+
+.crossword-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.crossword-loading {
+    min-height: 1.2em;
+    font-size: 0.85em;
+    opacity: 0.85;
+    text-align: center;
+}
+
+.crossword-tools {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: var(--crossword-size);
+    max-width: 100%;
+}
+
+.crossword-clear {
+    flex: 0 0 auto;
+}
+
+.crossword-clear:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.crossword-status {
+    font-size: 0.85em;
+    opacity: 0.85;
+    min-height: 1.2em;
+}
+
+/* --- Сетка и банк --- */
+
+.crossword-board-box {
+    width: var(--crossword-size);
+    max-width: 100%;
+}
+
+.crossword-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    /* Ни зума по двойному тапу, ни выделения текста: сетка и банк набираются тапами. */
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.crossword-board {
+    display: grid;
+    grid-template-columns: repeat(var(--crossword-cols), 1fr);
+    grid-template-rows: repeat(var(--crossword-rows), 1fr);
+    /* Высота считается от фактической ширины сетки, а не от --crossword-size: поля
+       попапа ST в vw не входят (грабли Фазы 5). */
+    aspect-ratio: var(--crossword-cols) / var(--crossword-rows);
+    width: 100%;
+    border: 1px solid var(--crossword-block);
+    background-color: var(--crossword-open);
+    /* Буква считается от фактической ширины сетки: на 11 столбцах шрифт мельче, чем
+       на семи, ровно во столько же раз. */
+    container-type: inline-size;
+    font-size: calc(58cqw / var(--crossword-cols));
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.crossword-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-top: 1px solid var(--crossword-line);
+    border-left: 1px solid var(--crossword-line);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.crossword-cell.crossword-block {
+    background-color: var(--crossword-block);
+    border-color: var(--crossword-block);
+    cursor: default;
+}
+
+.crossword-cell.crossword-active {
+    background-color: var(--crossword-active);
+}
+
+.crossword-cell.crossword-filled {
+    font-weight: 600;
+}
+
+/* Ошибка — только по настройке: по умолчанию кроссворд ничего не подсказывает. */
+.crossword-cell.crossword-wrong {
+    color: var(--crossword-wrong);
+}
+
+.crossword-cell.crossword-cursor {
+    outline: 2px dashed var(--crossword-accent);
+    outline-offset: -2px;
+}
+
+.crossword-cell:focus-visible {
+    outline: 2px solid var(--crossword-accent);
+    outline-offset: -2px;
+}
+
+/* Банк слов. Разложенные слова не исчезают, а гаснут: строка, теряющая слова, дёргалась
+   бы по ширине на каждом ходу (грабли ряда цифр в судоку). */
+.crossword-bank {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+}
+
+.crossword-word {
+    flex: 0 0 auto;
+    padding: 2px 6px;
+    border: 1px solid var(--crossword-line);
+    border-radius: 4px;
+    background-color: var(--crossword-chip);
+    color: inherit;
+    font-family: inherit;
+    font-size: 0.78em;
+    line-height: 1.35;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.crossword-word.crossword-word-fit {
+    border-color: var(--crossword-accent);
+}
+
+.crossword-word.crossword-word-used {
+    opacity: 0.35;
+    text-decoration: line-through;
+}
+
+.crossword-word.crossword-word-wrong {
+    color: var(--crossword-wrong);
+    border-color: var(--crossword-wrong);
+}
+
+.crossword-word:focus-visible {
+    outline: 2px solid var(--crossword-accent);
+    outline-offset: 1px;
+}
+
+/* --- Кроссворд: панель настроек --- */
+
+.stg-settings .stg-row.crossword-stats-header {
+    justify-content: space-between;
+}
+
+.crossword-stats {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 2px 12px;
+    margin: 4px 0 8px;
+    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+}
+
+.crossword-stats-row {
+    display: contents;
+}
+
+.crossword-stats-row > span:not(:first-child) {
+    text-align: right;
+}
+
+.crossword-stats-row.crossword-stats-head > span {
+    opacity: 0.6;
+    font-size: 0.85em;
 }

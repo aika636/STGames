@@ -291,6 +291,164 @@ export default async function run(env) {
 
         await closeShell(page);
     });
+
+    await e2eTest(env, 'кроссворд: слово раскладывается тапами и переживает перезагрузку', async () => {
+        await resetSettings(page);
+        await openHub(page);
+        await openGame(page, 'crossword');
+
+        assertEqual(await page.locator('.crossword-cell').count(), 49, 'на сетке лёгкого уровня не 49 клеток');
+
+        // Сетка должна остаться квадратной в реальном попапе ST: держится квадрат на
+        // aspect-ratio и container-запросах, а в jsdom размеров нет вовсе (грабли Фазы 5).
+        const box = await page.locator('.crossword-board').boundingBox();
+        assert(box && box.width > 0, 'сетка нулевой ширины');
+        assert(Math.abs(box.width - box.height) <= 2, `сетка не квадратная: ${box.width}×${box.height}`);
+
+        // Ход в два тапа: клетка выбирает слот целиком, слово из банка встаёт в него.
+        // Головоломка случайная, поэтому слово берём не по номеру, а любое подходящей
+        // длины — подсветку crossword-word-fit игра ставит сама под выбранный слот.
+        await page.locator('.crossword-cell:not(.crossword-block)').first().click();
+        const slotCells = await page.$$eval(
+            '.crossword-cell.crossword-active',
+            (cells) => cells.map((cell) => cell.dataset.idx),
+        );
+        assert(slotCells.length >= 3, 'тап по клетке не подсветил слот');
+
+        const fit = page.locator('.crossword-word.crossword-word-fit').first();
+        await fit.waitFor({ timeout: 10_000 });
+        const word = await fit.textContent();
+        await fit.click();
+
+        await page.waitForFunction(
+            () => document.querySelectorAll('.crossword-word.crossword-word-used').length === 1,
+            null,
+            { timeout: 10_000 },
+        );
+        // Выбор после постановки уезжает на следующее пустое место, поэтому буквы читаем
+        // по запомненным клеткам, а не по подсветке.
+        assertEqual(await lettersAt(page, slotCells), word, `в клетках слота не «${word}»`);
+
+        const grid = await crosswordGrid(page);
+
+        await closeShell(page);
+        await flushSettings(page);
+
+        const saved = (await readSettings(page)).games?.crossword?.savedGame;
+        assert(saved, 'партия не сохранилась в настройках');
+        assert(
+            saved.placed.split(',').some((slot) => slot !== '-1'),
+            'разложенное слово не попало в сохранённую партию',
+        );
+
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#stgames_wand_button', { state: 'attached', timeout: 90_000 });
+        await dismissPopups(page);
+        await openHub(page);
+        await openGame(page, 'crossword');
+
+        assertEqual(
+            await crosswordGrid(page),
+            grid,
+            'после перезагрузки открылась новая головоломка, а не сохранённая',
+        );
+
+        await closeShell(page);
+    });
+
+    await e2eTest(env, 'балда: буква по коду клавиши, слово росчерком мыши и сохранение', async () => {
+        await resetSettings(page);
+        // Загаданное слово должно быть известным, иначе набирать через него нечего:
+        // партию подкладываем сохранёнкой, как в jsdom-тесте. Проверяем здесь не правила,
+        // а ввод — раскладку и росчерк.
+        await seedBalda(page);
+        await openHub(page);
+        await openGame(page, 'balda');
+
+        assertEqual(await page.locator('.balda-cell').count(), 25, 'на поле не 25 клеток');
+        assertEqual(await baldaGlyphs(page, [10, 11, 12, 13, 14]), 'ПОРОГ', 'в среднем ряду не подложенное слово');
+
+        // Клетка 7 — пустая, над «Р» загаданного слова.
+        await page.locator('.balda-cell[data-idx="7"]').click();
+        // Букву набираем ПО КОДУ клавиши, то есть ровно как игрок с EN-раскладкой:
+        // key придёт латиницей, и буква обязана разрешиться через позицию на ЙЦУКЕН
+        // (KeyF → А). Этого перехода jsdom не видит вовсе.
+        await page.keyboard.press('KeyF');
+        await page.waitForFunction(
+            () => document.querySelector('.balda-cell[data-idx="7"] .balda-glyph')?.textContent === 'А',
+            null,
+            { timeout: 10_000 },
+        );
+
+        // Путь набираем настоящим росчерком мыши: клетка под указателем ищется через
+        // document.elementFromPoint, а он в jsdom подменён — по-настоящему это
+        // проверяется только здесь (как росчерк нонограммы).
+        const board = await page.locator('.balda-board').boundingBox();
+        assert(board && board.width > 0, 'поле нулевой ширины');
+        const step = board.width / 5;
+        const at = (index) => ({
+            x: board.x + step * ((index % 5) + 0.5),
+            y: board.y + step * (Math.floor(index / 5) + 0.5),
+        });
+
+        const stroke = [14, 13, 12, 7];   // Г, О, Р и новая А
+        await page.mouse.move(at(stroke[0]).x, at(stroke[0]).y);
+        await page.mouse.down();
+        for (const index of stroke.slice(1)) await page.mouse.move(at(index).x, at(index).y);
+        await page.mouse.up();
+
+        await page.waitForFunction(
+            () => document.querySelector('.balda-status')?.textContent === 'Слово: ГОРА',
+            null,
+            { timeout: 10_000 },
+        );
+
+        await page.locator('.balda-submit').click();
+        await page.waitForFunction(
+            () => document.querySelector('.balda-score')?.textContent === 'Вы 4 : 0 соперник',
+            null,
+            { timeout: 10_000 },
+        );
+        assert(
+            (await page.locator('.balda-words-list').first().textContent()).includes('ГОРА'),
+            'слово не попало в список игрока',
+        );
+
+        // Ни одна буква не должна утечь в чат: слушатель балды висит на document
+        // в capture-фазе ровно ради этого.
+        const chat = await page.inputValue('#send_textarea').catch(() => '');
+        assertEqual(chat, '', 'буквы ушли в поле ввода чата');
+
+        // Ход соперника отложен на 300 мс — дожидаемся его, иначе окно закроется
+        // посреди чужого хода и сохранёнка окажется какой придётся.
+        await page.waitForFunction(
+            () => ['Ваш ход', 'Партия окончена'].includes(document.querySelector('.balda-turn')?.textContent),
+            null,
+            { timeout: 15_000 },
+        );
+
+        await closeShell(page);
+        await flushSettings(page);
+
+        const saved = (await readSettings(page)).games?.balda?.savedGame;
+        assert(saved, 'партия не сохранилась в настройках');
+        assertEqual(saved.board.length, 25, 'поле сохранено не строкой из 25 символов');
+        assertEqual(saved.board[7], 'А', 'ход игрока не попал в сохранённую партию');
+
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#stgames_wand_button', { state: 'attached', timeout: 90_000 });
+        await dismissPopups(page);
+        await openHub(page);
+        await openGame(page, 'balda');
+
+        assertEqual(
+            await baldaGlyphs(page, [7]),
+            'А',
+            'после перезагрузки открылась новая партия, а не сохранённая',
+        );
+
+        await closeShell(page);
+    });
 }
 
 // Слово из словаря разрешённых с повтором буквы: заодно проверяем, что раскраска
@@ -305,4 +463,58 @@ function typedRow(page) {
 
 function canvasSignature(page) {
     return page.evaluate(() => document.querySelector('.snake-canvas')?.toDataURL().slice(0, 256) ?? '');
+}
+
+// --- Кроссворд
+
+function lettersAt(page, indices) {
+    return page.evaluate(
+        (ids) => ids
+            .map((id) => document.querySelector(`.crossword-cell[data-idx="${id}"]`)?.textContent ?? '')
+            .join(''),
+        indices,
+    );
+}
+
+// Вся сетка одной строкой: '#' на блоках, буква или '.' на клетках. Сравнивать
+// головоломку до и после перезагрузки удобнее целиком, чем по слотам.
+function crosswordGrid(page) {
+    return page.evaluate(() => [...document.querySelectorAll('.crossword-cell')]
+        .map((cell) => (cell.classList.contains('crossword-block') ? '#' : (cell.textContent || '.')))
+        .join(''));
+}
+
+// --- Балда
+
+// Партия с известным загаданным словом: слово в среднем ряду поля 5×5 (клетки 10…14),
+// ход игрока, поле в остальном пустое.
+const BALDA_POSITION = Object.freeze({
+    size: 5,
+    start: 'ПОРОГ',
+    board: `${'.'.repeat(10)}ПОРОГ${'.'.repeat(10)}`,
+    turn: 0,
+    human: 0,
+    passes: 0,
+    words: [[], []],
+    level: 'medium',
+});
+
+// Кладём сохранёнку прямо в настройки таверны: недостающие ключи допишет
+// merge-on-load из src/settings.js при первом чтении настроек игры.
+function seedBalda(page) {
+    return page.evaluate((saved) => {
+        const root = SillyTavern.getContext().extensionSettings;
+        if (!root.STGames) root.STGames = { version: 1, lastGame: null, games: {} };
+        if (!root.STGames.games) root.STGames.games = {};
+        root.STGames.games.balda = { ...(root.STGames.games.balda ?? {}), savedGame: saved };
+    }, BALDA_POSITION);
+}
+
+function baldaGlyphs(page, indices) {
+    return page.evaluate(
+        (ids) => ids
+            .map((id) => document.querySelector(`.balda-cell[data-idx="${id}"] .balda-glyph`)?.textContent ?? '')
+            .join(''),
+        indices,
+    );
 }

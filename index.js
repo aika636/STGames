@@ -7,11 +7,13 @@ import sudokuGame from './src/games/sudoku/index.js';
 import snakeGame from './src/games/snake/index.js';
 import reversiGame from './src/games/reversi/index.js';
 import wordsGame from './src/games/words/index.js';
+import minesweeperGame from './src/games/minesweeper/index.js';
+import nonogramGame from './src/games/nonogram/index.js';
 import { initSettingsUI } from './src/shell/settings-ui.js';
 import { initSlashCommands, initWandButton } from './src/shell/launcher.js';
 import { refresh } from './src/shell/modal.js';
 
-const VERSION = '0.6.0';
+const VERSION = '0.8.0';
 
 // Подсветка и таймер читаются из настроек при каждой отрисовке — открытому окну
 // достаточно сказать «перерисуйся».
@@ -66,6 +68,8 @@ register(sudokuGame);
 register(snakeGame);
 register(reversiGame);
 register(wordsGame);
+register(minesweeperGame);
+register(nonogramGame);
 
 jQuery(async () => {
     try {

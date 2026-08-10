@@ -183,6 +183,8 @@ const GAME_ROOTS = Object.freeze({
     // «Слова» грузят словарь динамическим import(): корень появляется сразу, а доска —
     // после загрузки, поэтому ждём именно сетку (см. src/games/words/ui/game.js).
     words: '.words-grid',
+    minesweeper: '.minesweeper-board',
+    nonogram: '.nonogram-board',
 });
 
 export async function openGame(page, id) {

@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 **STGames** — клиентское UI-расширение SillyTavern: платформа мини-игр с хабом, из которого
-игры открываются в модальном окне поверх чата. Сейчас в каталоге судоку, змейка, реверси
-и слова (русский вордл);
+игры открываются в модальном окне поверх чата. Сейчас в каталоге судоку, змейка, реверси,
+слова (русский вордл), сапёр и нонограмма (японский кроссворд);
 как добавить свою игру — `docs/games.md`. LLM в играх **не участвует**, `ctx.chat` не читается
 и не пишется, сетевых вызовов нет. Точки соприкосновения с ST — кнопка в wand-меню, попап
 и `extensionSettings` (настройки, партии, статистика).
@@ -37,13 +37,15 @@ src/settings.js  # extensionSettings.STGames, merge-on-load, миграция с
 src/registry.js  # реестр игр: register()/list()/get(), проверка контракта
 src/shell/       # оболочка: modal (попап и сессия), hub (список игр), launcher,
                  # settings-ui (общая панель настроек)
-src/games/       # по папке на игру: sudoku/, snake/, reversi/, words/ — внутри core/
+src/games/       # по папке на игру: sudoku/, snake/, reversi/, words/, minesweeper/,
+                 # nonogram/ — внутри core/
                  # (чистая логика) и ui/ (DOM); у words/ ещё data/ — словари, они
                  # грузятся динамическим import() и собираются офлайн tools/
                  # контракт игры — src/registry.js и docs/games.md
 tests/           # node-тесты; ядро — без зависимостей, UI — под jsdom (_harness.mjs)
 tests/e2e/       # e2e под Playwright в живой ST: _st.mjs (обвязка), run.mjs, *.e2e.mjs
-style.css        # стили, префиксы .stg-, .sudoku-, .snake-, .reversi-, .words-
+style.css        # стили, префиксы .stg-, .sudoku-, .snake-, .reversi-, .words-,
+                 # .minesweeper-, .nonogram-
 tools/           # офлайн-скрипты, в расширение не входят (сборка словарей «Слов»)
 settings.html    # каркас панели в Extensions drawer
 docs/            # games (контракт игры) / roadmap (фазы, риски) / development
@@ -63,6 +65,8 @@ node tests/run.mjs sudoku # фильтр: только судоку
 node tests/run.mjs snake  # фильтр: только змейка
 node tests/run.mjs reversi # фильтр: только реверси
 node tests/run.mjs words  # фильтр: только слова
+node tests/run.mjs minesweeper # фильтр: только сапёр
+node tests/run.mjs nonogram    # фильтр: только нонограмма
 STGAMES_ST_DIR=<путь к ST> node tests/e2e/run.mjs   # e2e в живой таверне под Playwright
 ./deploy.sh               # залить на тестовый ST + хардрелоад вкладки
 ```

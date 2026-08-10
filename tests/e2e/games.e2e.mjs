@@ -184,6 +184,113 @@ export default async function run(env) {
 
         await closeShell(page);
     });
+
+    await e2eTest(env, 'сапёр: первый клик рождает поле, правая кнопка ставит флажок', async () => {
+        await resetSettings(page);
+        await openHub(page);
+        await openGame(page, 'minesweeper');
+
+        assertEqual(await page.locator('.minesweeper-cell').count(), 81, 'на поле не 81 клетка');
+
+        // Поле должно остаться квадратным в реальном попапе ST: в jsdom размеров нет
+        // вовсе, а именно здесь ломалась вёрстка на узком экране (грабли Фазы 5).
+        const box = await page.locator('.minesweeper-board').boundingBox();
+        assert(box && box.width > 0, 'поле нулевой ширины');
+        assert(Math.abs(box.width - box.height) <= 2, `поле не квадратное: ${box.width}×${box.height}`);
+
+        // Правая кнопка — то, чего юнит-тесты по-настоящему не проверяют: в живом
+        // браузере поверх поля не должно вылезти контекстное меню.
+        await page.locator('.minesweeper-cell').nth(0).click({ button: 'right' });
+        assertEqual(await page.locator('.minesweeper-cell.minesweeper-flag').count(), 1, 'флажок не поставлен');
+
+        await page.locator('.minesweeper-cell').nth(40).click();
+        await page.waitForFunction(
+            () => document.querySelectorAll('.minesweeper-cell.minesweeper-open').length >= 9,
+            null,
+            { timeout: 10_000 },
+        );
+        assertEqual(
+            await page.locator('.minesweeper-cell.minesweeper-boom').count(),
+            0,
+            'первый клик попал на мину',
+        );
+
+        await closeShell(page);
+        await flushSettings(page);
+
+        const saved = (await readSettings(page)).games?.minesweeper?.savedGame;
+        assert(saved, 'партия не сохранилась в настройках');
+        assertEqual(saved.mine.length, 81, 'поле сохранено не строкой из 81 символа');
+
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#stgames_wand_button', { state: 'attached', timeout: 90_000 });
+        await dismissPopups(page);
+        await openHub(page);
+        await openGame(page, 'minesweeper');
+
+        assert(
+            await page.locator('.minesweeper-cell.minesweeper-open').count() >= 9,
+            'после перезагрузки открылось новое поле, а не сохранённое',
+        );
+
+        await closeShell(page);
+    });
+
+    await e2eTest(env, 'нонограмма: росчерк мышью красит линию и держит ось', async () => {
+        await resetSettings(page);
+        await openHub(page);
+        await openGame(page, 'nonogram');
+
+        assertEqual(await page.locator('.nonogram-cell').count(), 25, 'на поле не 25 клеток');
+
+        const box = await page.locator('.nonogram-board').boundingBox();
+        assert(box && box.width > 0, 'поле нулевой ширины');
+        assert(Math.abs(box.width - box.height) <= 2, `поле не квадратное: ${box.width}×${box.height}`);
+
+        // Росчерк — главное, чего не видит jsdom: там нет ни настоящих координат, ни
+        // elementFromPoint, и захват указателя тач-браузером не воспроизводится.
+        const cell = box.width / 5;
+        const centre = (n) => box.y + cell * (n + 0.5);
+        await page.mouse.move(box.x + cell * 0.5, centre(0));
+        await page.mouse.down();
+        await page.mouse.move(box.x + cell * 1.5, centre(0));
+        await page.mouse.move(box.x + cell * 2.5, centre(0));
+        // Рука дрогнула и уехала на соседнюю строку — росчерк обязан остаться на своей.
+        await page.mouse.move(box.x + cell * 3.5, centre(1));
+        await page.mouse.up();
+
+        await page.waitForFunction(
+            () => document.querySelectorAll('.nonogram-cell.nonogram-fill').length === 4,
+            null,
+            { timeout: 10_000 },
+        );
+        assertEqual(
+            await page.locator('.nonogram-cell[data-idx="8"].nonogram-fill').count(),
+            0,
+            'росчерк съехал на соседнюю строку',
+        );
+
+        await closeShell(page);
+        await flushSettings(page);
+
+        const saved = (await readSettings(page)).games?.nonogram?.savedGame;
+        assert(saved, 'партия не сохранилась в настройках');
+        assertEqual(saved.marks.length, 25, 'метки сохранены не строкой из 25 символов');
+
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#stgames_wand_button', { state: 'attached', timeout: 90_000 });
+        await dismissPopups(page);
+        await openHub(page);
+        await openGame(page, 'nonogram');
+
+        assertEqual(
+            await page.locator('.nonogram-cell.nonogram-fill').count(),
+            4,
+            'после перезагрузки открылась новая картинка, а не сохранённая',
+        );
+
+        await closeShell(page);
+    });
 }
 
 // Слово из словаря разрешённых с повтором буквы: заодно проверяем, что раскраска

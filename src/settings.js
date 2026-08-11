@@ -6,16 +6,19 @@
 
 import { getCtx } from './ctx.js';
 import { logInfo } from './log.js';
+import { DEFAULT_APPEARANCE, isAppearance } from './shell/appearance.js';
 
 export const MODULE_NAME = 'STGames';
 export const LEGACY_MODULE_NAME = 'Sudoku';
 export const SETTINGS_VERSION = 1;
 
 // Ключи верхнего уровня STGames: version — номер схемы (для будущих миграций),
-// lastGame — последняя открытая игра, games — настройки каждой игры по id.
+// lastGame — последняя открытая игра, appearance — палитра окна игр (общая для всех
+// игр, см. src/shell/appearance.js), games — настройки каждой игры по id.
 const TOP_LEVEL_DEFAULTS = Object.freeze({
     version: SETTINGS_VERSION,
     lastGame: null,
+    appearance: DEFAULT_APPEARANCE,
     games: {},
 });
 
@@ -111,6 +114,21 @@ export function getGameSettings(id, defaults) {
         }
     }
     return gameSettings;
+}
+
+// Оформление — ключ верхнего уровня, поэтому читается и пишется только здесь (правило
+// из CLAUDE.md). Битое значение из руками поправленного settings.json не должно уводить
+// окно в несуществующий режим — отдаём дефолт, файл при этом не трогаем.
+export function getAppearance() {
+    const value = getSettings().appearance;
+    return isAppearance(value) ? value : DEFAULT_APPEARANCE;
+}
+
+export function setAppearance(value) {
+    if (!isAppearance(value)) return false;
+    getSettings().appearance = value;
+    saveSettings();
+    return true;
 }
 
 export function saveSettings() {

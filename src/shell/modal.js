@@ -5,9 +5,10 @@
 import { getCtx, toast } from '../ctx.js';
 import { logError, logInfo } from '../log.js';
 import { get, list } from '../registry.js';
-import { getGameSettings, getSettings, saveSettings } from '../settings.js';
+import { getAppearance, getGameSettings, getSettings, saveSettings } from '../settings.js';
 import { renderAllStats } from './settings-ui.js';
 import { createHub } from './hub.js';
+import { applyAppearance } from './appearance.js';
 
 // Открытая сессия. Второй попап не открываем: два окна с одним состоянием разъехались
 // бы, а игроку и одного достаточно.
@@ -21,6 +22,16 @@ export function isOpen() {
 // партии: экран игры читает их при каждой отрисовке, но без внешнего пинка ждал бы
 // следующего хода.
 export function refresh() {
+    // Оформление могли переключить прямо во время партии — перечитываем его тем же
+    // пинком, что и настройки игры: экран внутри окна о палитре ничего не знает,
+    // она живёт на корне.
+    if (session?.root) {
+        try {
+            applyAppearance(session.root, getAppearance());
+        } catch (err) {
+            logError('не удалось применить оформление', err);
+        }
+    }
     if (session?.current?.refresh) {
         try {
             session.current.refresh();
@@ -42,6 +53,14 @@ export async function openShell({ gameId = null, args = {} } = {}) {
     // Фокусируемый корень: попап ST при открытии сам ставит фокус на первый подходящий
     // элемент внутри, и без этого им оказывался select уровня судоку.
     root.tabIndex = -1;
+    // Палитра ставится до монтирования экрана: игры читают переменные --stg-* при
+    // отрисовке (змейка — прямо из getComputedStyle канваса), и первый кадр не должен
+    // выйти в цветах чужого режима.
+    try {
+        applyAppearance(root, getAppearance());
+    } catch (err) {
+        logError('не удалось применить оформление', err);
+    }
 
     const topbar = document.createElement('div');
     topbar.className = 'stg-topbar';

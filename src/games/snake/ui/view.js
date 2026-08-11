@@ -1,7 +1,11 @@
 // Canvas-экран змейки. draw() рисует состояние движка (engine.js) на буфере,
 // размер которого задаётся в device-пикселях, а не в CSS-пикселях, — иначе на
-// телефоне картинка мыльная. Цвета берутся из темы ST через getComputedStyle
-// (bodyColor/gridColor), еда — фирменный красный судоку, чтобы не плодить палитры.
+// телефоне картинка мыльная.
+//
+// Цвета берутся из общего слоя палитры (--stg-snake-*, см. style.css) через
+// getComputedStyle. Именно поэтому те переменные заданы литералами и var(), без
+// color-mix: до канваса значение доезжает строкой, а color-mix() в ней fillStyle
+// не понимает — вместо цвета вышел бы прозрачный чёрный.
 
 export function createView({ cols, rows }) {
     const root = document.createElement('div');
@@ -39,9 +43,13 @@ export function createView({ cols, rows }) {
         ctx2d.clearRect(0, 0, w, w);
 
         const style = getComputedStyle(canvas);
-        const bodyColor = style.getPropertyValue('--SmartThemeQuoteColor') || 'currentColor';
-        const gridColor = style.getPropertyValue('--SmartThemeBorderColor') || 'currentColor';
-        const foodColor = '#e0533d';
+        // Фолбэки — на случай, если style.css почему-то не загрузился: без них canvas
+        // получил бы пустую строку и не нарисовал вообще ничего.
+        const pick = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
+        const headColor = pick('--stg-snake-head', '#6ca0dc');
+        const bodyColor = pick('--stg-snake-body', '#6ca0dc');
+        const gridColor = pick('--stg-snake-grid', 'rgba(128, 128, 128, 0.3)');
+        const foodColor = pick('--stg-snake-food', '#e0533d');
 
         if (state.showGrid) {
             ctx2d.strokeStyle = gridColor;
@@ -52,8 +60,10 @@ export function createView({ cols, rows }) {
             }
         }
 
+        // Голова своим цветом, а не цветом сетки: раньше она красилась тем же, чем
+        // разлиновка поля, и на светлых темах ST терялась вместе с ней.
         state.snake.forEach((seg, i) => {
-            ctx2d.fillStyle = i === 0 ? bodyColor : gridColor;
+            ctx2d.fillStyle = i === 0 ? headColor : bodyColor;
             ctx2d.fillRect(seg.x * cell + 1, seg.y * cell + 1, cell - 2, cell - 2);
         });
 

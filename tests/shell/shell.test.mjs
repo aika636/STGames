@@ -38,7 +38,8 @@ globalThis.SillyTavern = { getContext: () => context };
 
 const { clear, register } = await import('../../src/registry.js');
 const sudokuGame = (await import('../../src/games/sudoku/index.js')).default;
-const { isOpen, openShell } = await import('../../src/shell/modal.js');
+const { isOpen, openShell, refresh } = await import('../../src/shell/modal.js');
+const { setAppearance } = await import('../../src/settings.js');
 const { initSlashCommands, initWandButton } = await import('../../src/shell/launcher.js');
 
 // Вторая, тестовая игра: кнопка «← Игры» видна только когда игр в реестре больше одной.
@@ -177,6 +178,45 @@ await session({}, async (root) => {
         assert(root.querySelector('.stg-screen .sudoku-board'), 'доска смонтирована');
         assert(root.querySelector('.stg-back').hidden, 'в игре тоже скрыта');
     });
+});
+
+// --- Палитра окна: режим стоит на корне с первого кадра и переключается на лету.
+
+await session({ gameId: 'sudoku' }, async (root) => {
+    test('окно открывается уже с режимом палитры', () => {
+        // Настройки пустые, значит режим — auto; текст в jsdom по умолчанию чёрный,
+        // и авто обязано выбрать светлую палитру.
+        assertEqual(root.dataset.stgTheme, 'light', 'auto по чёрному тексту — light');
+    });
+
+    test('смена оформления доезжает до открытого окна', () => {
+        setAppearance('dark');
+        refresh();
+        assertEqual(root.dataset.stgTheme, 'dark', 'режим переключился без переоткрытия');
+
+        setAppearance('auto');
+        refresh();
+        assertEqual(root.dataset.stgTheme, 'light', 'обратно в авто');
+    });
+});
+
+test('панель настроек: селект оформления пишет выбор в настройки', async () => {
+    const { renderCommonSettings } = await import('../../src/shell/settings-ui.js');
+    const { getAppearance } = await import('../../src/settings.js');
+
+    const box = document.createElement('div');
+    renderCommonSettings(box);
+
+    const control = box.querySelector('#stgames_appearance');
+    assert(control, 'селект на месте');
+    assertEqual(control.options.length, 4, 'четыре режима');
+    assertEqual(control.value, 'auto', 'показан текущий режим');
+
+    control.value = 'theme';
+    control.dispatchEvent(new dom.window.Event('change'));
+    assertEqual(getAppearance(), 'theme', 'выбор сохранён');
+
+    setAppearance('auto');
 });
 
 // --- Точки запуска: wand-меню и слэш-команды.

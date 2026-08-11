@@ -5,8 +5,9 @@
 
 import { toast } from '../ctx.js';
 import { logError, logInfo } from '../log.js';
-import { getGameSettings, saveSettings } from '../settings.js';
+import { getAppearance, getGameSettings, saveSettings, setAppearance } from '../settings.js';
 import { list } from '../registry.js';
+import { APPEARANCE_OPTIONS } from './appearance.js';
 
 // onSettingsChanged из index.js: открытое окно игры перерисовывается после каждого
 // изменения настроек. Держится на уровне модуля, чтобы попасть в каждый api.
@@ -25,6 +26,8 @@ export async function initSettingsUI(onSettingsChanged) {
         logError('не удалось загрузить settings.html', err);
         return;
     }
+
+    renderCommonSettings(document.getElementById('stgames_settings_common'));
 
     const container = document.getElementById('stgames_settings_games');
     if (!container) return;
@@ -55,6 +58,39 @@ export async function initSettingsUI(onSettingsChanged) {
     }
 
     logInfo('панель настроек инициализирована');
+}
+
+// Общий блок настроек — то, что относится ко всем играм сразу. Пока в нём одно
+// оформление; лежит выше блоков игр, потому что это единственная настройка, которую
+// ищут, когда игру физически не видно на своей теме ST.
+//
+// Экспортируется ради тестов: панель целиком требует $.get и #extensions_settings, а
+// этот блок — обычный контейнер.
+export function renderCommonSettings(container) {
+    if (!container) return;
+    container.textContent = '';
+
+    const section = document.createElement('div');
+    section.className = 'stg-common-settings';
+
+    const heading = document.createElement('b');
+    heading.textContent = 'Оформление';
+    section.appendChild(heading);
+
+    const control = select('stgames_appearance', APPEARANCE_OPTIONS, getAppearance(), (value) => {
+        if (!setAppearance(value)) return;
+        // Окно могло быть открыто в этот момент — тот же пинок, что и у настроек игр.
+        settingsChanged?.();
+    });
+    section.appendChild(row('Палитра игр', control));
+
+    const hint = document.createElement('small');
+    hint.className = 'stg-settings-hint';
+    hint.textContent = 'Авто выбирает светлую или тёмную палитру по яркости темы таверны. '
+        + '«Цвета таверны» — оформление как раньше, цветами темы ST.';
+    section.appendChild(hint);
+
+    container.appendChild(section);
 }
 
 // Перерисовывает блоки статистики всех игр. Окно игры зовёт её после каждой

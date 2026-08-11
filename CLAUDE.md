@@ -36,7 +36,8 @@ src/log.js       # логи [STGames], warnOnce()
 src/settings.js  # extensionSettings.STGames, merge-on-load, миграция со старого Sudoku
 src/registry.js  # реестр игр: register()/list()/get(), проверка контракта
 src/shell/       # оболочка: modal (попап и сессия), hub (список игр), launcher,
-                 # settings-ui (общая панель настроек)
+                 # settings-ui (общая панель настроек), appearance (палитра окна:
+                 # light/dark/theme/auto, атрибут data-stg-theme на .stg-root)
 src/games/       # по папке на игру: sudoku/, snake/, reversi/, words/, minesweeper/,
                  # nonogram/, crossword/, balda/ — внутри core/
                  # (чистая логика) и ui/ (DOM); у words/, crossword/ и balda/ ещё data/ —
@@ -47,7 +48,8 @@ src/games/       # по папке на игру: sudoku/, snake/, reversi/, wor
 tests/           # node-тесты; ядро — без зависимостей, UI — под jsdom (_harness.mjs)
 tests/e2e/       # e2e под Playwright в живой ST: _st.mjs (обвязка), run.mjs, *.e2e.mjs
 style.css        # стили, префиксы .stg-, .sudoku-, .snake-, .reversi-, .words-,
-                 # .minesweeper-, .nonogram-, .crossword-, .balda-
+                 # .minesweeper-, .nonogram-, .crossword-, .balda-; общий слой цветов
+                 # --stg-* в блоке «Палитра» — игры берут цвета только оттуда
 tools/           # офлайн-скрипты, в расширение не входят: build-dictionary.mjs
                  # (словари «Слов», кроссворда и балды), build-crossword.mjs
                  # (пул головоломок кроссворда)
@@ -97,7 +99,10 @@ STGAMES_ST_DIR=<путь к ST> node tests/e2e/run.mjs   # e2e в живой т�
   `balda-` (игры), настройки в `ctx.extensionSettings.STGames`
   (camelCase `extensionSettings`, не `extension_settings`).
 - Настройки: замороженные дефолты в `game.defaults` + мерж недостающих ключей при чтении;
-  ключи верхнего уровня STGames (`version`/`lastGame`/`games`) правит только `src/settings.js`.
+  ключи верхнего уровня STGames (`version`/`lastGame`/`appearance`/`games`) правит только
+  `src/settings.js`.
+- Цвета: только через слой `--stg-*` (см. `style.css`), напрямую к `--SmartTheme*` и
+  `--black30a` игры не обращаются — на светлых темах ST это давало невидимое поле.
 - `event_types` vs `eventTypes`: только через `getEventTypes(ctx)`, подписку пропускать, если
   имени события нет.
 - Любое предположение о внутренностях ST проверять на живой инсталляции (ST 1.18.0)

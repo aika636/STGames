@@ -1,7 +1,7 @@
 # STGames
 
 [![SillyTavern extension](https://img.shields.io/badge/SillyTavern-extension-blue)](https://github.com/SillyTavern/SillyTavern)
-[![version](https://img.shields.io/badge/version-0.9.0-informational)](manifest.json)
+[![version](https://img.shields.io/badge/version-0.10.0-informational)](manifest.json)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **Мини-игры для [SillyTavern](https://github.com/SillyTavern/SillyTavern):** платформа с

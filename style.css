@@ -1,7 +1,11 @@
 /* Стили расширения STGames. Всё под префиксом .stg- (оболочка и хаб), .sudoku- и
    .snake- (игры), никаких голых селекторов тегов: расширение живёт внутри чужого DOM
-   и не должно задевать вёрстку SillyTavern. Цвета берутся из CSS-переменных темы ST,
-   чтобы игры не выбивались из оформления. */
+   и не должно задевать вёрстку SillyTavern.
+
+   Цвета игры берут не из темы ST напрямую, а из общего слоя переменных --stg-* (блок
+   «Палитра» ниже). Режим палитры ставит src/shell/appearance.js атрибутом
+   data-stg-theme на .stg-root: light/dark — самодостаточные наборы, theme — прежнее
+   поведение, цвета темы таверны. */
 
 /* --- Панель настроек --- */
 
@@ -19,6 +23,17 @@
 .stg-settings select.text_pole {
     flex: 1 1 auto;
     min-width: 0;
+}
+
+/* Общий блок панели — оформление игр. Отбит от блоков игр снизу, чтобы «Оформление» не
+   читалось как настройка первой в списке игры. */
+.stg-common-settings {
+    margin-bottom: 10px;
+}
+
+.stg-settings-hint {
+    display: block;
+    opacity: 0.7;
 }
 
 .stg-settings .stg-row.sudoku-stats-header {
@@ -77,6 +92,146 @@
     font-size: 0.85em;
 }
 
+/* --- Палитра ---
+ *
+ * Один слой переменных на все игры. Игры не знают ни про --SmartThemeQuoteColor, ни про
+ * --black30a: они пользуются только этими именами, а чем те окажутся — решает режим.
+ *
+ *   --stg-fg             цвет текста
+ *   --stg-bg             подложка всего окна игры (в режиме theme её нет)
+ *   --stg-surface        фон игрового поля: доски, сетки, канваса
+ *   --stg-surface-strong фон элементов поверх поля: закрытая клетка сапёра, клавиша
+ *   --stg-line           волосяная линия разлиновки
+ *   --stg-line-strong    заметная линия: рамка поля, границы боксов
+ *   --stg-tint-soft      лёгкая заливка поверх surface (hover, чётность)
+ *   --stg-tint-strong    сильная заливка (нажатие, выделение)
+ *   --stg-accent         акцент: выбор, курсор, подсказки
+ *   --stg-accent-fg      текст поверх залитого акцентом
+ *   --stg-danger         ошибка, мина, конфликт
+ *   --stg-snake-*        цвета канваса змейки — только литералы и var(), без color-mix:
+ *                        их читает JS через getComputedStyle, а color-mix в значении
+ *                        пользовательского свойства до JS доезжает неразобранным.
+ *
+ * Значения по умолчанию — режим theme: ровно то, что было до появления палитры.
+ */
+
+.stg-root {
+    --stg-fg: var(--SmartThemeBodyColor, currentColor);
+    --stg-bg: transparent;
+    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
+       вторую строку и оставит первую. Так во всём файле. */
+    --stg-surface: var(--black30a);
+    --stg-surface: color-mix(in srgb, currentColor 5%, transparent);
+    --stg-surface-strong: var(--white30a);
+    --stg-surface-strong: color-mix(in srgb, currentColor 13%, transparent);
+    --stg-line: var(--SmartThemeBorderColor, currentColor);
+    --stg-line: color-mix(in srgb, currentColor 18%, transparent);
+    --stg-line-strong: var(--SmartThemeBorderColor, currentColor);
+    --stg-line-strong: color-mix(in srgb, currentColor 52%, transparent);
+    --stg-tint-soft: var(--black30a);
+    --stg-tint-soft: color-mix(in srgb, currentColor 5%, transparent);
+    --stg-tint-strong: var(--white30a);
+    --stg-tint-strong: color-mix(in srgb, currentColor 14%, transparent);
+    --stg-accent: var(--SmartThemeQuoteColor, currentColor);
+    --stg-accent-fg: var(--SmartThemeBlurTintColor, #fff);
+    --stg-danger: #c0392b;
+
+    --stg-snake-head: var(--SmartThemeQuoteColor, #6ca0dc);
+    --stg-snake-body: var(--SmartThemeQuoteColor, #6ca0dc);
+    --stg-snake-grid: var(--SmartThemeBorderColor, #888);
+    --stg-snake-food: #e0533d;
+}
+
+/* Тёмная палитра. Не «тема ST потемнее», а свой набор: фон окна чуть светлее чёрного,
+   поле — ещё на ступень светлее, линии белые с альфой. */
+.stg-root[data-stg-theme='dark'] {
+    --stg-fg: #e7e7ea;
+    --stg-bg: #1c1d21;
+    --stg-surface: #26282e;
+    --stg-surface-strong: #33363f;
+    --stg-line: rgba(255, 255, 255, 0.14);
+    --stg-line-strong: rgba(255, 255, 255, 0.42);
+    --stg-tint-soft: rgba(255, 255, 255, 0.06);
+    --stg-tint-strong: rgba(255, 255, 255, 0.16);
+    --stg-accent: #78a9e0;
+    --stg-accent-fg: #14161b;
+    --stg-danger: #e0533d;
+
+    /* Голова заметно светлее тела: в две-три клетки длиной змейка иначе читается как
+       брусок без направления. */
+    --stg-snake-head: #dbeaff;
+    --stg-snake-body: #5b8ec9;
+    --stg-snake-grid: rgba(255, 255, 255, 0.14);
+    --stg-snake-food: #e0533d;
+}
+
+/* Светлая палитра. Поле белое, а подложка окна — тёплый серый: белое поле на белом окне
+   теряет края, а рамкой это не лечится (у сапёра и нонограммы её нет). */
+.stg-root[data-stg-theme='light'] {
+    --stg-fg: #22242a;
+    --stg-bg: #f2f0ec;
+    --stg-surface: #ffffff;
+    --stg-surface-strong: #dedbd4;
+    --stg-line: rgba(0, 0, 0, 0.18);
+    --stg-line-strong: rgba(0, 0, 0, 0.45);
+    --stg-tint-soft: rgba(0, 0, 0, 0.05);
+    --stg-tint-strong: rgba(0, 0, 0, 0.13);
+    --stg-accent: #2f6fb5;
+    --stg-accent-fg: #ffffff;
+    --stg-danger: #c0392b;
+
+    /* Голова заметно темнее тела — см. комментарий в тёмной палитре. */
+    --stg-snake-head: #143354;
+    --stg-snake-body: #5b93cf;
+    --stg-snake-grid: rgba(0, 0, 0, 0.16);
+    --stg-snake-food: #c0392b;
+}
+
+/* Своя палитра — своя подложка: без неё шапка окна и подписи остались бы цветом темы ST
+   поверх собственного фона игр, а попап таверны полупрозрачный и лежит поверх аватара —
+   светлый текст на светлом поле именно так и получался. В режиме theme подложки нет:
+   там окно по-прежнему просвечивает попап, как и задумано. */
+.stg-root[data-stg-theme='light'],
+.stg-root[data-stg-theme='dark'] {
+    padding: 12px;
+    border-radius: 12px;
+    background-color: var(--stg-bg);
+    /* Явно, а не в надежде на сброс ST: с content-box поля подложки прибавились бы к
+       max-width: 100% и окно вылезло бы за попап ровно на 24px. */
+    box-sizing: border-box;
+}
+
+/* Кнопки и селекты внутри окна — разметка SillyTavern (.menu_button, .text_pole), и
+   свою палитру они не знают: на светлом окне оставались чёрными плашками темы, а серый
+   текст селекта на сером фоне ST не читался вовсе. В режимах light/dark перекрашиваем
+   их под окно; в theme не трогаем — там оформление и должно быть таверны.
+   Селектор двухклассовый — этого хватает, чтобы перебить одноклассовые правила ST. */
+.stg-root[data-stg-theme='light'] .menu_button,
+.stg-root[data-stg-theme='dark'] .menu_button,
+.stg-root[data-stg-theme='light'] .text_pole,
+.stg-root[data-stg-theme='dark'] .text_pole {
+    border: 1px solid var(--stg-line-strong);
+    background-color: var(--stg-surface);
+    color: var(--stg-fg);
+    /* Тени и подсветки тем ST рассчитаны на их собственный фон и на нашем дают ореол. */
+    text-shadow: none;
+    box-shadow: none;
+    opacity: 1;
+}
+
+.stg-root[data-stg-theme='light'] .menu_button:hover,
+.stg-root[data-stg-theme='dark'] .menu_button:hover {
+    background-color: var(--stg-tint-strong);
+    color: var(--stg-fg);
+}
+
+/* Выпадающий список рисуется вне окна и цвет от селекта не наследует — задаём прямо. */
+.stg-root[data-stg-theme='light'] .text_pole option,
+.stg-root[data-stg-theme='dark'] .text_pole option {
+    background-color: var(--stg-bg);
+    color: var(--stg-fg);
+}
+
 /* --- Оболочка: корень, шапка, экран --- */
 
 .stg-root {
@@ -87,7 +242,25 @@
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
-    color: var(--SmartThemeBodyColor);
+    color: var(--stg-fg);
+}
+
+/* Корень окна и экран каждой игры фокусируемы программно (tabIndex = -1): фокус им нужен,
+   чтобы клавиши шли в игру, а не в select'ы попапа. Рамки фокуса им не нужно: жест по
+   полю (росчерк в балде и нонограмме) уводит фокус на экран игры, и тема таверны
+   обводила ВСЁ окно своей рамкой — на тёмной палитре это оранжевый прямоугольник во
+   весь экран. Клеткам и кнопкам рамка остаётся: их правила :focus-visible объявлены
+   ниже по файлу и эту перебивают. */
+.stg-root:focus,
+.stg-screen:focus,
+.sudoku-root:focus,
+.reversi-root:focus,
+.words-root:focus,
+.minesweeper-root:focus,
+.nonogram-root:focus,
+.crossword-root:focus,
+.balda-root:focus {
+    outline: none;
 }
 
 .stg-topbar {
@@ -103,7 +276,7 @@
 .stg-back {
     appearance: none;
     -webkit-appearance: none;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 1px solid var(--stg-line-strong);
     border-radius: 8px;
     background: transparent;
     color: inherit;
@@ -115,8 +288,7 @@
 }
 
 .stg-back:hover {
-    background-color: var(--black30a);
-    background-color: color-mix(in srgb, currentColor 5%, transparent);
+    background-color: var(--stg-tint-soft);
 }
 
 .stg-title {
@@ -149,7 +321,7 @@
     /* Кнопка внутри чужого DOM: снимаем всё, что мог навесить ST или браузер. */
     appearance: none;
     -webkit-appearance: none;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 1px solid var(--stg-line-strong);
     border-radius: 10px;
     background: transparent;
     color: inherit;
@@ -162,9 +334,8 @@
 
 .stg-tile:hover,
 .stg-tile:focus-visible {
-    border-color: var(--SmartThemeQuoteColor);
-    background-color: var(--black30a);
-    background-color: color-mix(in srgb, currentColor 5%, transparent);
+    border-color: var(--stg-accent);
+    background-color: var(--stg-tint-soft);
     outline: none;
 }
 
@@ -183,7 +354,7 @@
 
 /* Последняя сыгранная игра — тонкая рамка акцентом темы. */
 .stg-tile-last {
-    border-color: var(--SmartThemeQuoteColor);
+    border-color: var(--stg-accent);
 }
 
 /* --- Окно игры: судоку --- */
@@ -198,24 +369,17 @@
        фолбэком для браузеров без container queries. */
     --sudoku-cell: calc(var(--sudoku-size) / 9);
 
-    /* Тема таверны. Акцент и рамки берутся из переменных ST, а все заливки считаются
-       от currentColor: на тёмной теме текст светлый и подсветка выходит светлой, на
-       светлой — наоборот. Так окно подхватывает любую тему, а не только тёмные. */
-    --sudoku-accent: var(--SmartThemeQuoteColor, currentColor);
-    --sudoku-danger: #e0533d;
-    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
-       вторую строку и оставит первую. */
-    --sudoku-tint-soft: var(--black30a);
-    --sudoku-tint-soft: color-mix(in srgb, currentColor 5%, transparent);
-    --sudoku-tint-strong: var(--white30a);
-    --sudoku-tint-strong: color-mix(in srgb, currentColor 14%, transparent);
+    /* Палитра — из общего слоя --stg-* (см. блок «Палитра»). Свои имена остаются: по ним
+       видно, где у судоку что, а править сразу все игры удобнее в одном месте. */
+    --sudoku-accent: var(--stg-accent);
+    --sudoku-danger: var(--stg-danger);
+    --sudoku-tint-soft: var(--stg-tint-soft);
+    --sudoku-tint-strong: var(--stg-tint-strong);
     /* Сетка рисуется двумя градациями одного цвета, а не толщиной линий: волосяные
        линии внутри бокса и заметные — между боксами. Так доска читается структурно,
        но не выглядит начерченной маркером. */
-    --sudoku-line: var(--SmartThemeBorderColor, currentColor);
-    --sudoku-line: color-mix(in srgb, currentColor 12%, transparent);
-    --sudoku-line-strong: var(--SmartThemeBorderColor, currentColor);
-    --sudoku-line-strong: color-mix(in srgb, currentColor 52%, transparent);
+    --sudoku-line: var(--stg-line);
+    --sudoku-line-strong: var(--stg-line-strong);
 
     display: flex;
     flex-direction: column;
@@ -224,7 +388,7 @@
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
-    color: var(--SmartThemeBodyColor);
+    color: var(--stg-fg);
 }
 
 .sudoku-header {
@@ -273,10 +437,7 @@
     container-type: inline-size;
     border: 1px solid var(--sudoku-line-strong);
     border-radius: 10px;
-    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
-       вторую строку и оставит первую. */
-    background-color: var(--black30a);
-    background-color: var(--sudoku-tint-soft);
+    background-color: var(--stg-surface);
     /* Линии сетки рисуются границами клеток; собственные границы доски снаружи. */
     overflow: hidden;
     touch-action: manipulation;
@@ -341,14 +502,13 @@
 /* Клетки с той же цифрой, что и в выбранной. Строку/столбец/бокс не подсвечиваем:
    заливка трёх юнитов забивает доску сильнее, чем помогает её читать. */
 .sudoku-cell.sudoku-same {
-    background-color: var(--white30a);
     background-color: var(--sudoku-tint-strong);
 }
 
 /* Выбранная клетка — мягкая заливка акцентом и тонкая рамка, а не сплошной акцент:
    на светлых темах светлый текст по светлому акценту переставал читаться. */
 .sudoku-cell.sudoku-selected {
-    background-color: var(--white30a);
+    background-color: var(--sudoku-tint-strong);
     background-color: color-mix(in srgb, var(--sudoku-accent) 18%, transparent);
     box-shadow: inset 0 0 0 1px var(--sudoku-accent);
 }
@@ -359,6 +519,7 @@
 
 .sudoku-cell.sudoku-conflict {
     background-color: rgba(224, 83, 61, 0.1);
+    background-color: color-mix(in srgb, var(--sudoku-danger) 12%, transparent);
 }
 
 /* Ошибка (цифра не совпала с решением) — цветом и чертой под цифрой, а не заливкой:
@@ -494,7 +655,7 @@
 /* Режим заметок включён — кнопка залита акцентным цветом темы. */
 .sudoku-pad-action.sudoku-pad-on {
     background-color: var(--sudoku-accent);
-    color: var(--SmartThemeBlurTintColor);
+    color: var(--stg-accent-fg);
 }
 
 /* Нечего отменять/возвращать: кнопка приглушена, но не disabled — фокус не прыгает. */
@@ -559,7 +720,7 @@
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
-    color: var(--SmartThemeBodyColor);
+    color: var(--stg-fg);
 }
 
 .snake-header {
@@ -591,12 +752,9 @@
     display: block;
     width: 100%;
     height: 100%;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 1px solid var(--stg-line-strong);
     border-radius: 10px;
-    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
-       вторую строку и оставит первую. */
-    background-color: var(--black30a);
-    background-color: color-mix(in srgb, currentColor 5%, transparent);
+    background-color: var(--stg-surface);
     touch-action: none;
 }
 
@@ -647,7 +805,7 @@
     min-height: 44px;
     appearance: none;
     -webkit-appearance: none;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 1px solid var(--stg-line-strong);
     border-radius: 8px;
     background: transparent;
     color: inherit;
@@ -658,9 +816,8 @@
 }
 
 .snake-dpad-btn:hover {
-    border-color: var(--SmartThemeQuoteColor);
-    background-color: var(--black30a);
-    background-color: color-mix(in srgb, currentColor 5%, transparent);
+    border-color: var(--stg-accent);
+    background-color: var(--stg-tint-soft);
 }
 
 .snake-dpad-pause {
@@ -675,8 +832,9 @@
     align-items: center;
     justify-content: center;
     border-radius: 10px;
-    background-color: var(--black70a);
-    background-color: color-mix(in srgb, var(--black70a) 70%, transparent);
+    background-color: rgba(0, 0, 0, 0.55);
+    background-color: color-mix(in srgb, var(--stg-surface) 82%, transparent);
+    color: var(--stg-fg);
 }
 
 .snake-status {
@@ -696,15 +854,10 @@
        в узком попапе), поэтому всё внутри клетки считается в cqw от самой доски. */
     --reversi-cell: calc(var(--reversi-size) / 8);
 
-    /* Тема таверны: акцент и линии — из переменных ST, заливки — от currentColor, чтобы
-       доска подхватывала и тёмную тему, и светлую. */
-    --reversi-accent: var(--SmartThemeQuoteColor, currentColor);
-    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
-       вторую строку и оставит первую. */
-    --reversi-line: var(--SmartThemeBorderColor, currentColor);
-    --reversi-line: color-mix(in srgb, currentColor 16%, transparent);
-    --reversi-felt: var(--black30a);
-    --reversi-felt: color-mix(in srgb, currentColor 7%, transparent);
+    /* Палитра — из общего слоя --stg-*. */
+    --reversi-accent: var(--stg-accent);
+    --reversi-line: var(--stg-line);
+    --reversi-felt: var(--stg-surface);
 
     /* Фишки — единственное в игре, что не берётся из темы: они физически чёрные и белые,
        и «чёрные фишки цвета акцента» — это уже не реверси. Чтобы обе стороны читались на
@@ -719,7 +872,7 @@
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
-    color: var(--SmartThemeBodyColor);
+    color: var(--stg-fg);
 }
 
 .reversi-header {
@@ -771,9 +924,8 @@
     aspect-ratio: 1;
     /* Контейнер для cqw ниже: размеры фишек берутся от реальной ширины доски. */
     container-type: inline-size;
-    border: 1px solid var(--reversi-line);
+    border: 1px solid var(--stg-line-strong);
     border-radius: 10px;
-    background-color: var(--black30a);
     background-color: var(--reversi-felt);
     overflow: hidden;
     touch-action: manipulation;
@@ -892,11 +1044,9 @@
        Контраст с белым текстом держится в обеих темах ST. */
     --words-correct: #4f8a45;
     --words-present: #b59f3b;
-    --words-absent: var(--black50a);
-    --words-absent: color-mix(in srgb, currentColor 22%, transparent);
-    --words-line: var(--SmartThemeBorderColor, currentColor);
-    --words-line: color-mix(in srgb, currentColor 26%, transparent);
-    --words-invalid: #c0392b;
+    --words-absent: var(--stg-surface-strong);
+    --words-line: var(--stg-line-strong);
+    --words-invalid: var(--stg-danger);
 
     display: flex;
     flex-direction: column;
@@ -905,7 +1055,7 @@
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
-    color: var(--SmartThemeBodyColor);
+    color: var(--stg-fg);
 }
 
 /* Режим для дальтоников — не «убрать цвет», а другая пара: жёлто-зелёная хуже всего
@@ -1088,9 +1238,14 @@
 }
 
 /* Второй ряд короче на юнит с каждой стороны — сдвигаем его первую клавишу, и он
-   центрируется сам. */
+   центрируется сам.
+
+   Начало и ширина задаются одним свойством намеренно: `grid-column: span 2` — это
+   `grid-column-start: span 2`, и отдельный `grid-column-start: 2` не «сдвигает» клавишу,
+   а затирает span. Клавиша становилась вдвое уже соседних (12px на десктопе, 9 на
+   телефоне) — «Ф» заметно меньше остальных. */
 .words-keyboard-row:nth-child(2) > .words-key:first-child {
-    grid-column-start: 2;
+    grid-column: 2 / span 2;
 }
 
 .words-key {
@@ -1103,8 +1258,7 @@
     -webkit-appearance: none;
     border: none;
     border-radius: 4px;
-    background-color: var(--black30a);
-    background-color: color-mix(in srgb, currentColor 14%, transparent);
+    background-color: var(--stg-surface-strong);
     color: inherit;
     font-size: 0.95em;
     font-weight: 600;
@@ -1122,7 +1276,7 @@
    клавише до следующего тапа, и подсветка навсегда перекрывала бы раскраску. */
 @media (hover: hover) {
     .words-key:hover {
-        background-color: color-mix(in srgb, currentColor 22%, transparent);
+        background-color: var(--stg-tint-strong);
     }
 }
 
@@ -1245,17 +1399,13 @@
        в разумных пределах, как у реверси. */
     --minesweeper-size: clamp(240px, min(88vw, 60vh), 440px);
 
-    --minesweeper-accent: var(--SmartThemeQuoteColor, currentColor);
-    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
-       вторую строку и оставит первую. */
-    --minesweeper-line: var(--SmartThemeBorderColor, currentColor);
-    --minesweeper-line: color-mix(in srgb, currentColor 20%, transparent);
-    /* Закрытая клетка светлее открытой в тёмной теме и темнее в светлой — заливка
-       считается от currentColor, поэтому обе темы получаются одним правилом. */
-    --minesweeper-closed: var(--white30a);
-    --minesweeper-closed: color-mix(in srgb, currentColor 13%, transparent);
-    --minesweeper-open: color-mix(in srgb, currentColor 4%, transparent);
-    --minesweeper-boom: #c0392b;
+    --minesweeper-accent: var(--stg-accent);
+    --minesweeper-line: var(--stg-line-strong);
+    /* Закрытая клетка отличается от открытой не оттенком одной «дымки», а ролью:
+       открытая — это фон поля, закрытая — крышка поверх него. */
+    --minesweeper-closed: var(--stg-surface-strong);
+    --minesweeper-open: var(--stg-surface);
+    --minesweeper-boom: var(--stg-danger);
 
     display: flex;
     flex-direction: column;
@@ -1264,7 +1414,7 @@
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
-    color: var(--SmartThemeBodyColor);
+    color: var(--stg-fg);
 }
 
 .minesweeper-header {
@@ -1369,7 +1519,8 @@
 }
 
 .minesweeper-cell:hover:not(.minesweeper-open) {
-    background-color: color-mix(in srgb, currentColor 22%, transparent);
+    background-color: var(--stg-tint-strong);
+    background-color: color-mix(in srgb, var(--stg-fg) 18%, var(--minesweeper-closed));
 }
 
 .minesweeper-cell.minesweeper-open {
@@ -1470,15 +1621,15 @@
        больше, чем у сапёра: сама сетка получается меньше своего размера. */
     --nonogram-size: clamp(240px, min(90vw, 58vh), 460px);
 
-    --nonogram-accent: var(--SmartThemeQuoteColor, currentColor);
-    /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
-       вторую строку и оставит первую. */
-    --nonogram-line: var(--SmartThemeBorderColor, currentColor);
-    --nonogram-line: color-mix(in srgb, currentColor 18%, transparent);
+    --nonogram-accent: var(--stg-accent);
+    --nonogram-line: var(--stg-line);
     /* Толстая линия каждые пять клеток — та, по которой отсчитывают ряды. */
-    --nonogram-block: color-mix(in srgb, currentColor 45%, transparent);
-    --nonogram-fill: color-mix(in srgb, currentColor 82%, transparent);
-    --nonogram-wrong: #c0392b;
+    --nonogram-block: var(--stg-line-strong);
+    /* Закрашенная клетка — почти цвет текста: рисунок должен читаться как рисунок.
+       Фолбэк для браузеров без color-mix идёт первым. */
+    --nonogram-fill: var(--stg-fg);
+    --nonogram-fill: color-mix(in srgb, var(--stg-fg) 88%, transparent);
+    --nonogram-wrong: var(--stg-danger);
 
     display: flex;
     flex-direction: column;
@@ -1487,7 +1638,7 @@
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
-    color: var(--SmartThemeBodyColor);
+    color: var(--stg-fg);
 }
 
 .nonogram-header {
@@ -1644,7 +1795,7 @@
        попапа ST в vw не входят (грабли Фазы 5). */
     aspect-ratio: var(--nonogram-cols) / var(--nonogram-rows);
     border: 1px solid var(--nonogram-block);
-    background-color: color-mix(in srgb, currentColor 4%, transparent);
+    background-color: var(--stg-surface);
 }
 
 .nonogram-cell {
@@ -1830,17 +1981,9 @@
         order: -1;
     }
 
-    /* Как и у сапёра с нонограммой: селектор уровня уходит на свою строку, счётчик
-       слов и таймер остаются одной. */
-    .crossword-header {
-        flex-wrap: wrap;
-    }
-
-    .crossword-select {
-        max-width: 100%;
-        flex: 1 1 100%;
-        order: -1;
-    }
+    /* Мобильные правила кроссворда живут не здесь, а в собственном @media внизу файла,
+       рядом с его базовым блоком: базовые правила кроссворда объявлены ПОСЛЕ этого
+       медиазапроса, специфичность у них та же, и они его молча перебивали. */
 
     .words-root {
         /* Зазоры режем, а не плитку: сетка и клавиатура на 360×640 помещаются впритык,
@@ -1898,13 +2041,11 @@
 
 .balda-root {
     --balda-size: clamp(160px, min(86vw, 34vh), 320px);
-    --balda-line: var(--SmartThemeBorderColor, currentColor);
-    --balda-line: color-mix(in srgb, currentColor 26%, transparent);
-    --balda-accent: var(--SmartThemeQuoteColor, #6ca0dc);
-    /* Заливка занятой клетки: своего цвета у неё нет — только приглушённый текущий,
-       чтобы поле читалось в обеих темах ST. */
-    --balda-fill: var(--black30a);
-    --balda-fill: color-mix(in srgb, currentColor 10%, transparent);
+    --balda-line: var(--stg-line-strong);
+    --balda-accent: var(--stg-accent);
+    /* Занятая клетка залита фоном поля, пустая — только обведена: так видно, куда ещё
+       можно поставить букву. */
+    --balda-fill: var(--stg-surface);
 
     display: flex;
     flex-direction: column;
@@ -1913,7 +2054,7 @@
     width: 100%;
     max-width: 520px;
     margin: 0 auto;
-    color: var(--SmartThemeBodyColor);
+    color: var(--stg-fg);
 }
 
 .balda-header {
@@ -2001,11 +2142,11 @@
 
 .balda-cell.balda-path {
     background-color: var(--balda-accent);
-    color: #fff;
+    color: var(--stg-accent-fg);
 }
 
 .balda-cell.balda-pending.balda-path {
-    color: #fff;
+    color: var(--stg-accent-fg);
 }
 
 /* Номер шага в углу клетки: без него набранное слово читается только в строке
@@ -2069,12 +2210,15 @@
     gap: 3px;
 }
 
+/* Сдвиг второго и третьего ряда — одним свойством вместе с шириной: отдельный
+   grid-column-start затирает span из .balda-key (см. ту же грабля у клавиатуры «Слов»),
+   и «Ф» с «Я» выходили вдвое уже соседних клавиш. */
 .balda-keyboard-row:nth-child(2) > .balda-key:first-child {
-    grid-column-start: 2;
+    grid-column: 2 / span 2;
 }
 
 .balda-keyboard-row:nth-child(3) > .balda-key:first-child {
-    grid-column-start: 4;
+    grid-column: 4 / span 2;
 }
 
 .balda-key {
@@ -2087,8 +2231,7 @@
     -webkit-appearance: none;
     border: none;
     border-radius: 4px;
-    background-color: var(--black30a);
-    background-color: color-mix(in srgb, currentColor 14%, transparent);
+    background-color: var(--stg-surface-strong);
     color: inherit;
     font-size: 0.95em;
     font-weight: 600;
@@ -2102,7 +2245,7 @@
    клавише до следующего тапа. */
 @media (hover: hover) {
     .balda-key:hover {
-        background-color: color-mix(in srgb, currentColor 22%, transparent);
+        background-color: var(--stg-tint-strong);
     }
 }
 
@@ -2205,22 +2348,18 @@
        нужно не только полю. */
     --crossword-size: clamp(200px, min(88vw, 40vh), 420px);
 
-    --crossword-accent: var(--SmartThemeQuoteColor, currentColor);
+    --crossword-accent: var(--stg-accent);
+    --crossword-line: var(--stg-line);
+    --crossword-block: var(--stg-line-strong);
+    /* Открытая клетка — фон поля, а не «дымка» поверх окна: только так сетка видна на
+       любой теме таверны. */
+    --crossword-open: var(--stg-surface);
     /* Фолбэк для браузеров без color-mix идёт первым — их движок просто не поймёт
        вторую строку и оставит первую. */
-    --crossword-line: var(--SmartThemeBorderColor, currentColor);
-    --crossword-line: color-mix(in srgb, currentColor 22%, transparent);
-    --crossword-block: var(--SmartThemeBorderColor, currentColor);
-    --crossword-block: color-mix(in srgb, currentColor 55%, transparent);
-    /* Серый с альфой читается и на светлой, и на тёмной теме: это фолбэк, а не цвет
-       по умолчанию — движок с color-mix возьмёт вторую строку. */
-    --crossword-open: rgba(128, 128, 128, 0.08);
-    --crossword-open: color-mix(in srgb, currentColor 4%, transparent);
-    --crossword-active: rgba(128, 128, 128, 0.28);
-    --crossword-active: color-mix(in srgb, var(--SmartThemeQuoteColor, currentColor) 20%, transparent);
-    --crossword-chip: rgba(128, 128, 128, 0.2);
-    --crossword-chip: color-mix(in srgb, currentColor 12%, transparent);
-    --crossword-wrong: #c0392b;
+    --crossword-active: var(--stg-tint-strong);
+    --crossword-active: color-mix(in srgb, var(--stg-accent) 22%, var(--stg-surface));
+    --crossword-chip: var(--stg-surface-strong);
+    --crossword-wrong: var(--stg-danger);
 
     display: flex;
     flex-direction: column;
@@ -2229,7 +2368,7 @@
     width: fit-content;
     max-width: 100%;
     margin: 0 auto;
-    color: var(--SmartThemeBodyColor);
+    color: var(--stg-fg);
 }
 
 .crossword-header {
@@ -2382,7 +2521,7 @@
        слова — а выбранное место чаще всего как раз такое, недобранное. Серый с альфой —
        фолбэк для движков без color-mix, он читается и на светлой, и на тёмной теме. */
     color: rgba(128, 128, 128, 0.85);
-    color: color-mix(in srgb, currentColor 45%, transparent);
+    color: color-mix(in srgb, var(--stg-fg) 45%, transparent);
 }
 
 /* Ошибка — только по настройке: по умолчанию кроссворд ничего не подсказывает. */
@@ -2482,6 +2621,47 @@
 .crossword-word:focus-visible {
     outline: 2px solid var(--crossword-accent);
     outline-offset: 1px;
+}
+
+/* Узкий экран. Медиазапрос стоит здесь, а не в общем блоке @media выше по файлу:
+   базовые правила кроссворда объявлены ниже него, специфичность у них та же, и общий
+   блок оказывался мёртвым — селектор уровня оставался при своих max-width: 45%, и
+   «Лёгкий (7×7)» обрезался посреди слова. */
+@media (max-width: 500px) {
+    /* Как и у сапёра с нонограммой: селектор уровня уходит на свою строку, счётчик
+       слов и таймер остаются одной. */
+    .crossword-header {
+        flex-wrap: wrap;
+    }
+
+    .crossword-select {
+        max-width: 100%;
+        flex: 1 1 100%;
+        order: -1;
+    }
+
+    /* Сетку на узком экране НЕ уменьшаем, хотя соблазн есть: ширина окна равна ширине
+       сетки, и сетка поуже делает банк поуже — слова в нём переносятся на лишние
+       строки, и окно выходит выше, а не ниже. Высоту ограничиваем там, где она
+       действительно плавает, — в самом банке. */
+    .crossword-bank {
+        /* Высота банка зависит от головоломки: у одной четыре строки длин, у другой
+           шесть, и эта разница на 360×640 ровно та, что выдавливает низ окна за край
+           попапа. Банк прокручивается внутри себя — как списки слов балды, — и высота
+           окна перестаёт зависеть от того, какая головоломка выпала. */
+        max-height: 18vh;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .crossword-tools {
+        flex-wrap: wrap;
+        row-gap: 4px;
+    }
+
+    .crossword-status {
+        flex: 1 1 100%;
+    }
 }
 
 /* --- Кроссворд: панель настроек --- */

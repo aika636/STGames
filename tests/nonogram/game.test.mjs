@@ -127,7 +127,29 @@ test('собранная картинка восстанавливается к�
     assert(restored.over && restored.won, 'победа досчитана честно');
 });
 
+test('название рисунка переживает сохранение', () => {
+    const clues = cluesFromGrid(PICTURE, 3, 3);
+    const state = createGame({
+        cols: 3,
+        rows: 3,
+        grid: PICTURE,
+        ...clues,
+        picture: { id: 'corner-3', title: 'Уголок' },
+    });
+
+    const restored = deserialize(serialize(state));
+    assertEqual(restored.picture.title, 'Уголок', 'подпись');
+    assertEqual(restored.picture.id, 'corner-3', 'id');
+});
+
 test('deserialize переживает мусор из settings.json', () => {
+    const noName = serialize(game());
+    assertEqual(deserialize(noName).picture, null, 'случайная картинка — без подписи');
+
+    const junkName = serialize(game());
+    junkName.picture = { id: 42, title: ['ой'] };
+    assertEqual(deserialize(junkName).picture, null, 'чужие типы в подписи');
+
     assertEqual(deserialize(null), null, 'null');
     assertEqual(deserialize('картинка'), null, 'строка');
     assertEqual(deserialize({ cols: 3, rows: 3 }), null, 'без полей');

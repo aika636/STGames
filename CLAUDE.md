@@ -41,7 +41,8 @@ src/games/       # по папке на игру: sudoku/, snake/, reversi/, wor
                  # nonogram/, crossword/, balda/ — внутри core/
                  # (чистая логика) и ui/ (DOM); у words/, crossword/ и balda/ ещё data/ —
                  # словари и пул головоломок, они грузятся динамическим import()
-                 # и собираются офлайн tools/
+                 # и собираются офлайн tools/; у nonogram/data/ — банк рисунков
+                 # (нарисован руками, грузится обычным import)
                  # контракт игры — src/registry.js и docs/games.md
 tests/           # node-тесты; ядро — без зависимостей, UI — под jsdom (_harness.mjs)
 tests/e2e/       # e2e под Playwright в живой ST: _st.mjs (обвязка), run.mjs, *.e2e.mjs

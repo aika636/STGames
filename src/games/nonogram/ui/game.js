@@ -120,10 +120,12 @@ export function createNonogramScreen(root, api) {
     let clockSince = null;
     let cursor = 0;
     let crossMode = false;
+    let lastPictureId = null;
 
     const restored = resume ? restoreGame() : null;
     let state = restored?.state ?? newPuzzle(statsLevel);
     if (restored) {
+        lastPictureId = restored.state.picture?.id ?? null;
         statsLevel = restored.level;
         levelSelect.value = statsLevel;
         // Восстановленная партия уже посчитана там, где началась. Пустое поле — ещё нет:
@@ -141,13 +143,18 @@ export function createNonogramScreen(root, api) {
 
     function newPuzzle(level) {
         const geometry = boardFor(level);
-        const puzzle = generatePuzzle(geometry);
+        // Предыдущий рисунок не выдаём снова: банк не бесконечный, и повтор подряд
+        // читается как поломка генератора. Помним id отдельно от state: newPuzzle
+        // зовётся в том числе для самой первой партии, когда state ещё не присвоен.
+        const puzzle = generatePuzzle({ ...geometry, avoid: lastPictureId });
+        lastPictureId = puzzle.picture?.id ?? null;
         return createGame({
             cols: geometry.cols,
             rows: geometry.rows,
             grid: puzzle.grid,
             rowClues: puzzle.rowClues,
             colClues: puzzle.colClues,
+            picture: puzzle.picture,
         });
     }
 
@@ -199,7 +206,15 @@ export function createNonogramScreen(root, api) {
             colDone: (x) => colDone(state, x),
         });
 
-        status.textContent = state.over ? `Картинка собрана за ${formatTime(elapsed())}` : '';
+        status.textContent = state.over ? winMessage() : '';
+    }
+
+    // Название рисунка — награда за партию, поэтому появляется только на победе.
+    // У случайной картинки названия нет, и подпись остаётся прежней.
+    function winMessage() {
+        const time = formatTime(elapsed());
+        const title = state.picture?.title;
+        return title ? `«${title}» — собрано за ${time}` : `Картинка собрана за ${time}`;
     }
 
     // --- Часы
@@ -254,7 +269,7 @@ export function createNonogramScreen(root, api) {
 
     function finish() {
         persist();
-        notify(`Картинка собрана за ${formatTime(elapsed())}`, 'success');
+        notify(winMessage(), 'success');
         recordOutcome();
     }
 

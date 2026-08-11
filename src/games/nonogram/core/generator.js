@@ -1,12 +1,22 @@
-// Генерация нонограммы. Картинка рисуется случайно, подсказки считаются по ней, а
-// принимается она только если решатель (core/solver.js) восстанавливает её однозначно,
-// одними линейными выводами. Это и есть определение честной нонограммы: у неё ровно
-// одно решение, и оно берётся без перебора с возвратом.
+// Генерация нонограммы. Картинка принимается только если решатель (core/solver.js)
+// восстанавливает её однозначно, одними линейными выводами. Это и есть определение
+// честной нонограммы: у неё ровно одно решение, и оно берётся без перебора с возвратом.
 //
-// Случайный шум таким свойством почти не обладает, поэтому картинка не бросается целиком
-// при неудаче, а чинится: клетки, которые решатель не смог определить, перекрашиваются —
-// разобранная часть картинки при этом сохраняется. Приём тот же, что в генераторе сапёра.
+// Откуда берётся сама картинка — два источника, по порядку:
+//
+//   1. Банк рисунков (../data/pictures.js). В настоящей нонограмме собранное поле —
+//      это кот, кораблик или гриб, и ради этого её и решают. Рисунки нарисованы руками
+//      и проверены на однозначность тестом, так что здесь остаётся выбрать один из них.
+//   2. Случайная заливка — запасной путь: если под размер поля рисунков нет вовсе (чужая
+//      геометрия из теста или из будущего уровня) или выбранный почему-то не решился.
+//      Отказать в партии нельзя: игрок нажал «Новая» и ждёт поле.
+//
+// Случайный шум однозначностью почти не обладает, поэтому такая картинка не бросается
+// целиком при неудаче, а чинится: клетки, которые решатель не смог определить,
+// перекрашиваются — разобранная часть картинки при этом сохраняется. Приём тот же, что
+// в генераторе сапёра.
 
+import { gridOf, picturesFor } from '../data/pictures.js';
 import { cluesFromGrid, solveGrid, UNKNOWN } from './solver.js';
 
 // Свой генератор случайных чисел в каждой игре — правило проекта: игры не импортируют
@@ -62,10 +72,47 @@ function isDegenerate(grid) {
     return filled === 0 || filled === grid.length;
 }
 
-// Возвращает { grid, rowClues, colClues, unique, attempts }. unique === false означает,
-// что потолок попыток исчерпан и отдана последняя картинка: отказать в партии нельзя —
+// Возвращает { grid, rowClues, colClues, unique, attempts, picture }. picture — { id,
+// title } нарисованной картинки или null у случайной. unique === false означает, что
+// потолок попыток исчерпан и отдана последняя картинка: отказать в партии нельзя —
 // игрок нажал «Новая» и ждёт поле, а не сообщение об ошибке.
-export function generatePuzzle({ cols, rows, density = 0.55, rng = Math.random }) {
+//
+// avoid — id картинки, которую только что собрали: подряд один и тот же рисунок заметен
+// куда сильнее, чем ограниченность банка вообще.
+export function generatePuzzle({ cols, rows, density = 0.55, rng = Math.random, avoid = null }) {
+    const drawn = pickPicture({ cols, rows, rng, avoid });
+    if (drawn) return drawn;
+    return generateNoise({ cols, rows, density, rng });
+}
+
+// Картинка из банка. null — рисунков под эту геометрию нет или ни один не решается
+// линейными выводами (такого быть не должно, это ловит тест банка, но игра из-за правки
+// в data/ падать не обязана).
+function pickPicture({ cols, rows, rng, avoid }) {
+    const all = picturesFor(cols, rows);
+    const pool = all.length > 1 ? all.filter((pic) => pic.id !== avoid) : all;
+    if (pool.length === 0) return null;
+
+    const start = Math.floor(rng() * pool.length);
+    for (let step = 0; step < pool.length; step++) {
+        const pic = pool[(start + step) % pool.length];
+        const grid = gridOf(pic);
+        const clues = cluesFromGrid(grid, cols, rows);
+        const result = solveGrid({ cols, rows, ...clues });
+        if (result.solved && !result.contradiction) {
+            return {
+                grid,
+                ...clues,
+                unique: true,
+                attempts: step + 1,
+                picture: { id: pic.id, title: pic.title },
+            };
+        }
+    }
+    return null;
+}
+
+function generateNoise({ cols, rows, density, rng }) {
     let attempts = 0;
     let grid = null;
     let clues = null;
@@ -79,7 +126,7 @@ export function generatePuzzle({ cols, rows, density = 0.55, rng = Math.random }
             clues = cluesFromGrid(grid, cols, rows);
             const result = solveGrid({ cols, rows, ...clues });
             if (result.solved && !result.contradiction) {
-                return { grid, ...clues, unique: true, attempts };
+                return { grid, ...clues, unique: true, attempts, picture: null };
             }
 
             // Чинка: перекрашиваем одну из клеток, которые решатель не определил.
@@ -95,5 +142,11 @@ export function generatePuzzle({ cols, rows, density = 0.55, rng = Math.random }
         }
     }
 
-    return { grid, ...(clues ?? cluesFromGrid(grid, cols, rows)), unique: false, attempts };
+    return {
+        grid,
+        ...(clues ?? cluesFromGrid(grid, cols, rows)),
+        unique: false,
+        attempts,
+        picture: null,
+    };
 }

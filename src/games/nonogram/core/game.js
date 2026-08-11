@@ -15,13 +15,17 @@ export const EMPTY = 0;
 export const FILLED = 1;
 export const CROSS = 2;
 
-export function createGame({ cols, rows, grid, rowClues, colClues }) {
+// picture — { id, title } рисунка из банка или null у случайной картинки. Название нужно
+// только в момент победы («Кот собран за 3:20»), до неё это спойлер, поэтому в состоянии
+// оно просто лежит и никуда не показывается.
+export function createGame({ cols, rows, grid, rowClues, colClues, picture = null }) {
     return {
         cols,
         rows,
         solution: Uint8Array.from(grid),
         rowClues,
         colClues,
+        picture,
         marks: new Uint8Array(cols * rows),
         elapsed: 0,
         over: false,
@@ -113,6 +117,9 @@ export function serialize(state) {
         rows: state.rows,
         solution: Array.from(state.solution).join(''),
         marks: Array.from(state.marks).join(''),
+        // Название рисунка сохраняем как есть: вывести его из картинки нельзя, а
+        // продолженная партия должна заканчиваться той же подписью, что и начатая.
+        picture: state.picture ? { id: state.picture.id, title: state.picture.title } : null,
         elapsed: Math.max(0, Math.round(state.elapsed)),
         over: state.over,
         won: state.won,
@@ -145,7 +152,14 @@ export function deserialize(raw) {
     }
 
     const { rowClues, colClues } = cluesFromGrid(solution, cols, rows);
-    const state = createGame({ cols, rows, grid: solution, rowClues, colClues });
+    const state = createGame({
+        cols,
+        rows,
+        grid: solution,
+        rowClues,
+        colClues,
+        picture: readPicture(raw.picture),
+    });
     state.marks = marks;
     state.elapsed = Number.isFinite(raw.elapsed) && raw.elapsed > 0 ? Math.floor(raw.elapsed) : 0;
     state.over = Boolean(raw.over);
@@ -154,6 +168,16 @@ export function deserialize(raw) {
     // не показывал «партия идёт» на готовой картинке.
     if (!state.over) checkWin(state);
     return state;
+}
+
+// Подпись из settings.json — чужой текст: файл правится руками. Берём только строки
+// разумной длины, всё остальное превращается в «картинка без названия».
+function readPicture(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const id = typeof raw.id === 'string' ? raw.id.slice(0, 40) : '';
+    const title = typeof raw.title === 'string' ? raw.title.slice(0, 40) : '';
+    if (!id && !title) return null;
+    return { id, title };
 }
 
 function isSize(value) {

@@ -41,6 +41,8 @@ import {
     clearSlot,
     createGame,
     deserialize,
+    lettersOf,
+    pendingCells,
     placeWord,
     remaining,
     serialize,
@@ -202,12 +204,21 @@ function buildScreen(screen, api, pool, resume) {
     clearBtn.textContent = 'Убрать';
     clearBtn.title = 'Снять слово с выбранного места';
 
+    // Переход к следующему свободному месту. На сетке, добранной пересечениями, глазами
+    // такое место не найти — оно выглядит заполненным (бледные буквы это и показывают,
+    // но тыкать в них на телефоне всё равно неудобно).
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'crossword-next menu_button';
+    nextBtn.textContent = 'Дальше';
+    nextBtn.title = 'Перейти к следующему свободному месту';
+
     const status = document.createElement('div');
     status.className = 'crossword-status';
 
     const tools = document.createElement('div');
     tools.className = 'crossword-tools';
-    tools.append(clearBtn, status);
+    tools.append(clearBtn, nextBtn, status);
 
     screen.append(header, boardBox, tools);
 
@@ -342,16 +353,29 @@ function buildScreen(screen, api, pool, resume) {
         timerEl.style.display = settings.showTimer === false ? 'none' : '';
 
         clearBtn.disabled = state.over || selected === null || state.placed[selected] === EMPTY;
+        nextBtn.disabled = state.over || left === 0;
 
         const highlight = Boolean(settings.highlightMistakes);
         board.render(state, {
             cursor,
             slot: selected,
+            pending: new Set(pendingCells(state)),
             wrongCells: highlight ? new Set(wrongCells(state)) : undefined,
             wrongSlots: highlight ? new Set(wrongSlots(state)) : undefined,
         });
 
-        status.textContent = state.over ? `Кроссворд собран за ${formatTime(elapsed())}` : '';
+        status.textContent = state.over
+            ? `Кроссворд собран за ${formatTime(elapsed())}`
+            : hint(left);
+    }
+
+    // Подсказка для состояния, в котором сетка выглядит собранной, а слова остались:
+    // все буквы пришли с пересечений, и часть мест по-прежнему пуста. Бледные буквы
+    // это показывают, но словами надёжнее — иначе игра выглядит зависшей.
+    function hint(left) {
+        if (left === 0) return '';
+        if (lettersOf(state).includes(' ')) return '';
+        return `Буквы сошлись на пересечениях: разложите оставшиеся слова (${left})`;
     }
 
     // --- Часы
@@ -414,6 +438,14 @@ function buildScreen(screen, api, pool, resume) {
     function clearSelected() {
         if (state.over || selected === null) return;
         if (clearSlot(state, selected)) afterMove();
+    }
+
+    function gotoNextEmpty() {
+        if (state.over || remaining(state) === 0) return;
+        if (selected === null) selectFirstEmpty();
+        else selectNextEmpty();
+        render();
+        focusCursor();
     }
 
     function afterMove() {
@@ -612,6 +644,11 @@ function buildScreen(screen, api, pool, resume) {
     clearBtn.addEventListener('click', () => {
         clearBtn.blur();
         clearSelected();
+    });
+
+    nextBtn.addEventListener('click', () => {
+        nextBtn.blur();
+        gotoNextEmpty();
     });
 
     return {

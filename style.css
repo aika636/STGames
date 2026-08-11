@@ -2287,11 +2287,13 @@
     max-width: 100%;
 }
 
-.crossword-clear {
+.crossword-clear,
+.crossword-next {
     flex: 0 0 auto;
 }
 
-.crossword-clear:disabled {
+.crossword-clear:disabled,
+.crossword-next:disabled {
     opacity: 0.45;
     cursor: default;
 }
@@ -2322,26 +2324,35 @@
 
 .crossword-board {
     display: grid;
-    grid-template-columns: repeat(var(--crossword-cols), 1fr);
-    grid-template-rows: repeat(var(--crossword-rows), 1fr);
+    /* minmax(0, 1fr), а не 1fr: у клетки min-content — это буква, и одна широкая «Ш»
+       раздвинула бы свой столбец за счёт соседних. Сетка обязана оставаться ровной. */
+    grid-template-columns: repeat(var(--crossword-cols), minmax(0, 1fr));
+    grid-template-rows: repeat(var(--crossword-rows), minmax(0, 1fr));
     /* Высота считается от фактической ширины сетки, а не от --crossword-size: поля
        попапа ST в vw не входят (грабли Фазы 5). */
     aspect-ratio: var(--crossword-cols) / var(--crossword-rows);
     width: 100%;
     border: 1px solid var(--crossword-block);
     background-color: var(--crossword-open);
-    /* Буква считается от фактической ширины сетки: на 11 столбцах шрифт мельче, чем
-       на семи, ровно во столько же раз. */
+    /* Контейнер для cqw в КЛЕТКЕ: сама сетка запросить себя не может — cqw внутри
+       .crossword-board уехал бы к внешнему контейнеру, а без него к вьюпорту, и в широком
+       окне ST буква выходила вчетверо больше клетки (в живой таверне 106px вместо 30).
+       Ровно как у сапёра и нонограммы: container-type здесь, font-size — на детях. */
     container-type: inline-size;
-    font-size: calc(58cqw / var(--crossword-cols));
     line-height: 1;
     text-transform: uppercase;
+    overflow: hidden;
 }
 
 .crossword-cell {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Клетка — 1/cols ширины сетки, буква занимает от неё чуть больше половины: так
+       она помещается и в 7 столбцов, и в 11. */
+    font-size: calc(58cqw / var(--crossword-cols));
+    min-width: 0;
+    overflow: hidden;
     border-top: 1px solid var(--crossword-line);
     border-left: 1px solid var(--crossword-line);
     cursor: pointer;
@@ -2362,6 +2373,18 @@
     font-weight: 600;
 }
 
+/* Буква, пришедшая с пересечения в место, куда слово ещё не положено. Разница видна
+   и без color-mix: у «своей» буквы вес 600, у чужой — обычный. Цвет — второй слой
+   сигнала для движков, которые color-mix понимают. */
+.crossword-cell.crossword-pending {
+    font-weight: 400;
+    /* Гасим букву, а не клетку: opacity на клетке притушила бы и подсветку выбранного
+       слова — а выбранное место чаще всего как раз такое, недобранное. Серый с альфой —
+       фолбэк для движков без color-mix, он читается и на светлой, и на тёмной теме. */
+    color: rgba(128, 128, 128, 0.85);
+    color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
 /* Ошибка — только по настройке: по умолчанию кроссворд ничего не подсказывает. */
 .crossword-cell.crossword-wrong {
     color: var(--crossword-wrong);
@@ -2378,26 +2401,65 @@
 }
 
 /* Банк слов. Разложенные слова не исчезают, а гаснут: строка, теряющая слова, дёргалась
-   бы по ширине на каждом ходу (грабли ряда цифр в судоку). */
+   бы по ширине на каждом ходу (грабли ряда цифр в судоку). Слова разложены по длинам —
+   строка на длину, число слева; подобрать слово под место в семь клеток иначе можно
+   было только пересчитывая буквы в каждом слове подряд. */
 .crossword-bank {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+}
+
+.crossword-bank-group {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    width: 100%;
+}
+
+/* Ширина колонки с числом фиксирована: длины 3…9 однозначные, и слова всех строк
+   обязаны начинаться на одной вертикали, иначе группировка не читается. */
+.crossword-bank-len {
+    flex: 0 0 auto;
+    width: 1.2em;
+    text-align: right;
+    font-size: 0.72em;
+    opacity: 0.55;
+    font-variant-numeric: tabular-nums;
+}
+
+.crossword-bank-words {
     display: flex;
     flex-wrap: wrap;
     align-content: flex-start;
-    justify-content: center;
     gap: 4px;
-    width: 100%;
+    min-width: 0;
+}
+
+/* Выбрано место — своя строка подсвечена, остальные притухли. Не прячем: банк, меняющий
+   высоту на каждый выбор слота, дёргал бы всё окно. */
+.crossword-bank-group-off {
+    opacity: 0.5;
+}
+
+.crossword-bank-group-fit .crossword-bank-len {
+    opacity: 1;
+    color: var(--crossword-accent);
 }
 
 .crossword-word {
     flex: 0 0 auto;
-    padding: 2px 6px;
+    /* 3px по вертикали, а не 2: с ними чип дотягивает до 24px — нижней границы
+       тыкаемой цели, которую меряет mobile.e2e. */
+    padding: 3px 7px;
     border: 1px solid var(--crossword-line);
     border-radius: 4px;
     background-color: var(--crossword-chip);
     color: inherit;
     font-family: inherit;
     font-size: 0.78em;
-    line-height: 1.35;
+    line-height: 1.5;
     letter-spacing: 0.02em;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;

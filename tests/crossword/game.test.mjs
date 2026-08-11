@@ -16,6 +16,7 @@ import {
     isSolved,
     letterAt,
     lettersOf,
+    pendingCells,
     placeWord,
     remaining,
     serialize,
@@ -121,6 +122,26 @@ test('ошибки считаются по клеткам и по словам',
     placeWord(state, 1, LODKA);
     assertEqual(wrongCells(state).join(','), '0,5,10', 'неверные клетки');
     assertEqual(wrongSlots(state).join(','), '1', 'неверный слот');
+});
+
+// Ради этой пометки всё и затевалось: слот, накрытый чужими словами, выглядит занятым,
+// хотя пуст, и без неё сетка спорит со счётчиком «осталось слов».
+test('буквы от пересечений отмечаются, пока своё слово не положено', () => {
+    const state = fresh();
+    assertEqual(pendingCells(state).length, 0, 'на пустом поле букв нет вовсе');
+
+    // МАРКА в колонке: её буквы попадают в клетки трёх горизонтальных слов, которых
+    // ещё нет (0 — МЕЛЬ, 10 — РЯДЫ, 20 — АТАКА).
+    placeWord(state, 1, MARKA);
+    assertEqual(pendingCells(state).join(','), '0,10,20', 'клетки на пересечениях с пустыми слотами');
+
+    // Своё слово в слот 0 закрывает клетку 0, но открывает клетку 2 — через неё идёт
+    // ЛОДКА, а её ещё не положили.
+    placeWord(state, 0, MEL);
+    assertEqual(pendingCells(state).join(','), '2,10,20', 'пометка ушла со своего слова и встала на новое пересечение');
+
+    solve(state);
+    assertEqual(pendingCells(state).length, 0, 'на собранной сетке чужих букв нет');
 });
 
 test('serialize/deserialize: круговой рейс', () => {

@@ -75,6 +75,28 @@ export function availableWords(state) {
     return out;
 }
 
+// Клетки, буква в которых держится только на пересечениях: слово, проходящее через
+// клетку в другом направлении, разложено, а собственное слово места — ещё нет.
+//
+// Нужно UI, и не для красоты: слот, все клетки которого накрыты чужими словами,
+// выглядит заполненным, хотя пуст. В пуле такие слоты есть почти в каждой головоломке,
+// и без отдельной пометки собранная на вид сетка молча спорит со счётчиком
+// «осталось слов: 6» — игра выглядит непроходимой (на этом партия и встала).
+export function pendingCells(state) {
+    const out = [];
+    for (let cell = 0; cell < state.puzzle.grid.length; cell++) {
+        if (state.puzzle.grid[cell] !== OPEN) continue;
+        if (!letterAt(state, cell)) continue;
+        for (const ref of state.puzzle.cellSlots[cell]) {
+            if (state.placed[ref.slot] === EMPTY) {
+                out.push(cell);
+                break;
+            }
+        }
+    }
+    return out;
+}
+
 // Сколько слотов ещё пусто.
 export function remaining(state) {
     let count = 0;

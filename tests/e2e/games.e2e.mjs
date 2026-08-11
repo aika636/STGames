@@ -3,6 +3,7 @@
 // то, чего они не видят: что в реальном браузере и попапе ST всё это вообще работает.
 
 import { assert, assertEqual } from '../_harness.mjs';
+import { slotsFromGrid } from '../../src/games/crossword/core/puzzles.js';
 import {
     closeShell, dismissPopups, e2eTest, flushSettings, openGame, openHub, readSettings, resetSettings,
 } from './_st.mjs';
@@ -356,6 +357,60 @@ export default async function run(env) {
         await closeShell(page);
     });
 
+    // Партия, доигранная до конца, а не «сделан один ход». Проверка появилась после
+    // того, как игра на среднем уровне оказалась внешне непроходимой: сетку добирали
+    // пересечения, места выглядели занятыми, и до победы дело не доходило. Дымовой тест
+    // с одним словом этого увидеть не мог.
+    await e2eTest(env, 'кроссворд: партия доигрывается до победы', async () => {
+        await resetSettings(page);
+        await openHub(page);
+        await openGame(page, 'crossword');
+        await page.waitForSelector('.crossword-word', { timeout: 20_000 });
+
+        // Головоломка случайная, а раскладку знает только сама партия — поэтому сначала
+        // один ход (он же запускает сохранение), потом читаем solution из настроек.
+        await page.locator('.crossword-cell:not(.crossword-block)').first().click();
+        await page.locator('.crossword-word.crossword-word-fit').first().click();
+        await flushSettings(page);
+
+        const saved = (await readSettings(page)).games?.crossword?.savedGame;
+        assert(saved?.solution, 'в сохранённой партии нет раскладки');
+        const slots = slotsFromGrid(saved.grid, saved.cols, saved.rows);
+        const solution = saved.solution.split(',').map(Number);
+        assertEqual(slots.length, solution.length, 'слотов и слов в раскладке разное число');
+
+        // Первый ход мог оказаться неверным — снимаем его, дальше кладём только по решению.
+        const placed = page.locator('.crossword-word.crossword-word-used');
+        if (await placed.count() > 0) await placed.first().click();
+
+        for (let index = 0; index < slots.length; index++) {
+            const slot = slots[index];
+            await selectCrosswordSlot(page, slot);
+            await page.locator(`.crossword-word[data-word="${solution[index]}"]`).click();
+            await page.waitForFunction(
+                (word) => document
+                    .querySelector(`.crossword-word[data-word="${word}"]`)
+                    ?.classList.contains('crossword-word-used') === true,
+                solution[index],
+                { timeout: 10_000 },
+            );
+        }
+
+        assertEqual(await page.locator('.crossword-left').textContent(), 'Готово', 'счётчик не закрылся');
+        assert(
+            (await page.locator('.crossword-status').textContent()).startsWith('Кроссворд собран'),
+            'победная строка не показана',
+        );
+        // Бледных букв на собранной сетке быть не может: все места заняты своими словами.
+        assertEqual(await page.locator('.crossword-cell.crossword-pending').count(), 0, 'остались чужие буквы');
+
+        await closeShell(page);
+        await flushSettings(page);
+
+        const stats = (await readSettings(page)).games?.crossword?.stats;
+        assertEqual(stats?.easy?.wins, 1, 'победа не попала в статистику');
+    });
+
     await e2eTest(env, 'балда: буква по коду клавиши, слово росчерком мыши и сохранение', async () => {
         await resetSettings(page);
         // Загаданное слово должно быть известным, иначе набирать через него нечего:
@@ -474,6 +529,22 @@ function lettersAt(page, indices) {
             .join(''),
         indices,
     );
+}
+
+// Выбор конкретного слота тапами — так же, как это делает игрок. Тап по первой клетке
+// выбирает слово одного из двух направлений, повторный тап переключает; попыток три,
+// больше состояний у клетки нет.
+async function selectCrosswordSlot(page, slot) {
+    const cell = page.locator(`.crossword-cell[data-idx="${slot.cells[0]}"]`);
+    for (let attempt = 0; attempt < 3; attempt++) {
+        await cell.click();
+        const active = await page.$$eval(
+            '.crossword-cell.crossword-active',
+            (cells) => cells.map((el) => Number(el.dataset.idx)),
+        );
+        if (active.join(',') === slot.cells.join(',')) return;
+    }
+    throw new Error(`не удалось выбрать слот ${slot.index} (${slot.dir}) в клетке ${slot.cells[0]}`);
 }
 
 // Вся сетка одной строкой: '#' на блоках, буква или '.' на клетках. Сравнивать

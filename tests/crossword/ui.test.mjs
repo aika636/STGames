@@ -173,6 +173,53 @@ await session({ gameId: 'crossword' }, async (root) => {
         assertEqual(readEntry(settings().stats, 'easy').played, 1, 'партия засчитана');
     });
 
+    test('банк разложен по длинам и подсвечивает строку под выбранное место', () => {
+        // Фикстура: МЕЛЬ и РЯДЫ по 4 буквы, АТАКА/ЛОДКА/МАРКА по 5.
+        const groups = [...root.querySelectorAll('.crossword-bank-group')];
+        assertEqual(groups.map((g) => g.dataset.len).join(','), '4,5', 'строки по длинам, по возрастанию');
+        assertEqual(
+            groups.map((g) => g.querySelectorAll('.crossword-word').length).join(','),
+            '2,3',
+            'слова разошлись по своим строкам',
+        );
+        assertEqual(groups[0].querySelector('.crossword-bank-len').textContent, '4', 'подпись длины');
+
+        // Выбран слот на 4 клетки (МЕЛЬ стоит там же) — своя строка поднята, чужая притухла.
+        cellAt(root, 1).click();
+        assert(groups[0].classList.contains('crossword-bank-group-fit'), 'строка нужной длины подсвечена');
+        assert(groups[1].classList.contains('crossword-bank-group-off'), 'строка чужой длины притушена');
+    });
+
+    test('буква от пересечения бледная, пока своё слово не положено', () => {
+        const pending = () => [...root.querySelectorAll('.crossword-cell.crossword-pending')]
+            .map((cell) => Number(cell.dataset.idx));
+        // Сейчас разложено только МЕЛЬ (слот 0). Клетка 0 — пересечение с пустой МАРКА,
+        // клетка 2 — с пустой ЛОДКА; клетки 1 и 3 не пересекаются ни с чем.
+        assertEqual(pending().join(','), '0,2', 'пометка на пересечениях с пустыми слотами');
+
+        cellAt(root, 0).click();
+        cellAt(root, 0).click();
+        assertEqual(activeCells(root).join(','), '0,5,10,15,20', 'выбран вертикальный слот');
+        wordAt(root, MARKA).click();
+        assert(!pending().includes(0), 'клетка на стыке двух разложенных слов больше не бледная');
+        assertEqual(pending().join(','), '2,10,20', 'а новые пересечения помечены');
+
+        // Возвращаем партию в прежнее состояние: дальше тесты идут по одной МЕЛЬ.
+        wordAt(root, MARKA).click();
+        assertEqual(pending().join(','), '0,2', 'после снятия пометки вернулись');
+    });
+
+    test('«Дальше» ведёт к следующему свободному месту', () => {
+        const next = root.querySelector('.crossword-next');
+        assert(next && !next.disabled, 'кнопка есть и доступна');
+        cellAt(root, 1).click();
+        assertEqual(activeCells(root).join(','), '0,1,2,3', 'выбран занятый слот 0');
+        next.click();
+        assert(activeCells(root).join(',') !== '0,1,2,3', 'выбор ушёл с занятого места');
+        // «Убрать» доступно только на занятом месте — значит, выбранное свободно.
+        assert(root.querySelector('.crossword-clear').disabled, 'выбранное место свободно');
+    });
+
     test('слово в занятом слоте заменяется, прежнее возвращается в банк', () => {
         cellAt(root, 1).click();
         wordAt(root, RYADY).click();

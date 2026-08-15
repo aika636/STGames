@@ -7,7 +7,14 @@
    data-stg-theme на .stg-root: light/dark — самодостаточные наборы, theme — прежнее
    поведение, цвета темы таверны. */
 
-/* --- Панель настроек --- */
+/* --- Панель настроек ---
+ *
+ * Панель живёт в Extensions drawer таверны, вне .stg-root, поэтому переменных --stg-*
+ * здесь нет. Цвета — только нейтральная серая полупрозрачность (rgba(128,128,128,…)):
+ * она читается и на светлых, и на тёмных темах ST и ничего не занимает у темы.
+ *
+ * Раскладка: карточка «Оформление», затем аккордеон игр — по свёрнутой секции на игру.
+ */
 
 .stg-settings .stg-row {
     display: flex;
@@ -16,28 +23,153 @@
     margin: 6px 0;
 }
 
+/* Подпись тянется, контрол прижимается к правому краю — так у всех строк секции
+   получается общая колонка значений, а не рваный край. */
 .stg-settings .stg-row > label:not(.checkbox_label) {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
 }
 
 .stg-settings select.text_pole {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
+    max-width: 55%;
+}
+
+/* Шапка блока статистики: «Статистика» слева, «Сбросить» справа. Одно правило на все
+   игры — каждая называет свою строку <игра>-stats-header. */
+.stg-settings .stg-row[class*="-stats-header"] {
+    justify-content: space-between;
+}
+
+.stg-settings .stg-section-heading,
+.stg-settings .stg-games-heading {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.stg-settings .stg-games-heading {
+    margin: 12px 0 8px;
+}
+
+.stg-settings .stg-games-heading small {
+    opacity: 0.6;
+    font-size: 0.8em;
 }
 
 /* Общий блок панели — оформление игр. Отбит от блоков игр снизу, чтобы «Оформление» не
    читалось как настройка первой в списке игры. */
 .stg-common-settings {
-    margin-bottom: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 10px;
+    background-color: rgba(128, 128, 128, 0.06);
 }
 
 .stg-settings-hint {
     display: block;
+    margin-top: 4px;
     opacity: 0.7;
+    font-size: 0.8em;
+    line-height: 1.35;
 }
 
-.stg-settings .stg-row.sudoku-stats-header {
-    justify-content: space-between;
+.stg-settings-footnote {
+    display: block;
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(128, 128, 128, 0.25);
+    opacity: 0.6;
+    font-size: 0.8em;
+}
+
+/* --- Аккордеон игр --- */
+
+.stg-game-settings {
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.stg-game-settings + .stg-game-settings {
+    margin-top: 6px;
+}
+
+.stg-game-settings.stg-game-open {
+    background-color: rgba(128, 128, 128, 0.06);
+}
+
+/* Шапка секции — кнопка внутри чужого DOM: снимаем всё, что мог навесить ST. */
+.stg-game-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.stg-game-toggle:hover,
+.stg-game-toggle:focus-visible {
+    background-color: rgba(128, 128, 128, 0.12);
+    outline: none;
+}
+
+/* Иконки игр разной ширины — фиксированная колонка держит названия на одной линии. */
+.stg-game-icon {
+    flex: 0 0 1.2em;
+    text-align: center;
+    opacity: 0.85;
+}
+
+.stg-game-label {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.stg-game-tagline {
+    opacity: 0.6;
+    font-size: 0.8em;
+}
+
+.stg-game-chevron {
+    flex: 0 0 auto;
+    opacity: 0.5;
+    font-size: 0.8em;
+    transition: transform 0.15s ease;
+}
+
+.stg-game-open .stg-game-chevron {
+    transform: rotate(180deg);
+}
+
+.stg-game-body {
+    padding: 2px 12px 10px;
+}
+
+.stg-game-controls:not(:empty) {
+    padding-bottom: 4px;
+}
+
+/* Статистика отбита от контролов линией: внутри секции это второй смысловой блок. */
+.stg-game-controls:not(:empty) + .stg-game-stats:not(:empty) {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(128, 128, 128, 0.25);
 }
 
 /* Таблица статистики: четыре колонки, уровень по левому краю, числа — по правому,
@@ -62,10 +194,6 @@
 .sudoku-stats-row.sudoku-stats-head > span {
     opacity: 0.6;
     font-size: 0.85em;
-}
-
-.stg-settings .stg-row.reversi-stats-header {
-    justify-content: space-between;
 }
 
 /* Та же таблица, что у судоку, но колонок шесть: уровень, сыграно, победы, поражения,
@@ -1588,10 +1716,6 @@
 
 /* --- Сапёр: панель настроек --- */
 
-.stg-settings .stg-row.minesweeper-stats-header {
-    justify-content: space-between;
-}
-
 .minesweeper-stats {
     display: grid;
     grid-template-columns: 1fr auto auto auto;
@@ -1856,10 +1980,6 @@
 }
 
 /* --- Нонограмма: панель настроек --- */
-
-.stg-settings .stg-row.nonogram-stats-header {
-    justify-content: space-between;
-}
 
 .nonogram-stats {
     display: grid;
@@ -2665,10 +2785,6 @@
 }
 
 /* --- Кроссворд: панель настроек --- */
-
-.stg-settings .stg-row.crossword-stats-header {
-    justify-content: space-between;
-}
 
 .crossword-stats {
     display: grid;

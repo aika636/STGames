@@ -219,6 +219,28 @@ test('панель настроек: селект оформления пише�
     setAppearance('auto');
 });
 
+test('панель настроек: блок игры свёрнут и раскрывается по клику', async () => {
+    const { renderGameSection } = await import('../../src/shell/settings-ui.js');
+
+    const section = renderGameSection(sudokuGame);
+    const toggle = section.querySelector('.stg-game-toggle');
+    const body = section.querySelector('.stg-game-body');
+
+    assert(toggle && body, 'шапка и тело секции на месте');
+    assertEqual(toggle.getAttribute('aria-controls'), body.id, 'шапка указывает на своё тело');
+    assert(body.hidden, 'по умолчанию свёрнуто');
+    assert(section.querySelector('#stg_stats_sudoku'), 'контейнер статистики с прежним id');
+    assert(section.querySelector('#sudoku_difficulty'), 'контролы игры отрисованы');
+
+    toggle.dispatchEvent(new dom.window.Event('click'));
+    assert(!body.hidden, 'клик раскрывает секцию');
+    assertEqual(toggle.getAttribute('aria-expanded'), 'true', 'состояние в aria-expanded');
+    assert(section.classList.contains('stg-game-open'), 'класс раскрытой секции');
+
+    toggle.dispatchEvent(new dom.window.Event('click'));
+    assert(body.hidden, 'повторный клик сворачивает обратно');
+});
+
 // --- Точки запуска: wand-меню и слэш-команды.
 
 test('initWandButton добавляет ровно один пункт в wand-меню', () => {

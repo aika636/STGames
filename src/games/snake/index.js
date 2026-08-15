@@ -42,6 +42,15 @@ export default {
         const stats = readStats(api.settings.stats);
         container.innerHTML = '';
 
+        // Та же шапка, что у остальных игр: «Статистика» слева, «Сбросить» справа —
+        // блоки в общей панели должны читаться одинаково.
+        const header = document.createElement('div');
+        header.className = 'stg-row snake-stats-header';
+        const heading = document.createElement('b');
+        heading.textContent = 'Статистика';
+        header.appendChild(heading);
+        container.appendChild(header);
+
         const played = document.createElement('div');
         played.textContent = `Сыграно: ${stats.played}`;
         const bestScore = document.createElement('div');
@@ -55,13 +64,14 @@ export default {
         if (stats.played || stats.bestScore || stats.bestLength) {
             const btn = document.createElement('button');
             btn.className = 'menu_button';
+            btn.title = 'Обнулить статистику';
             btn.textContent = 'Сбросить';
             btn.addEventListener('click', () => {
                 resetStats(api.settings.stats);
                 api.save();
                 api.renderAllStats();
             });
-            container.appendChild(btn);
+            header.appendChild(btn);
         }
     },
 };

@@ -34,23 +34,7 @@ export async function initSettingsUI(onSettingsChanged) {
 
     for (const game of list()) {
         try {
-            const section = document.createElement('div');
-            section.className = 'stg-game-settings';
-
-            const heading = document.createElement('b');
-            heading.textContent = game.title;
-            section.appendChild(heading);
-
-            // Настройки и статистика — в отдельных контейнерах: renderAllStats()
-            // перерисовывает только статистику, не трогая контролы.
-            const settingsBox = document.createElement('div');
-            const statsBox = document.createElement('div');
-            statsBox.id = `stg_stats_${game.id}`;
-            section.append(settingsBox, statsBox);
-
-            game.renderSettings?.(settingsBox, makeApi(game));
-            game.renderStats?.(statsBox, makeApi(game));
-            container.appendChild(section);
+            container.appendChild(renderGameSection(game));
         } catch (err) {
             // Сломанная панель одной игры не должна ронять панель целиком.
             logError(`не удалось отрисовать настройки игры ${game.id}`, err);
@@ -58,6 +42,77 @@ export async function initSettingsUI(onSettingsChanged) {
     }
 
     logInfo('панель настроек инициализирована');
+}
+
+// Блок одной игры — сворачиваемая секция: шапка с иконкой, названием и подзаголовком
+// из реестра, внутри — контролы и статистика. Свёрнуто по умолчанию: восемь игр,
+// развёрнутых разом, и были той «стеной настроек», в которой ничего не найти.
+//
+// Свой тоггл, а не .inline-drawer таверны: панель собирается в голом DOM и должна
+// открываться в тестах под jsdom, где обработчиков ST нет.
+//
+// Экспортируется ради тестов — так же, как renderCommonSettings.
+export function renderGameSection(game) {
+    const section = document.createElement('div');
+    section.className = 'stg-game-settings';
+    section.dataset.gameId = game.id;
+
+    const body = document.createElement('div');
+    body.className = 'stg-game-body';
+    body.id = `stg_game_body_${game.id}`;
+    body.hidden = true;
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'stg-game-toggle';
+    toggle.id = `stg_game_toggle_${game.id}`;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-controls', body.id);
+
+    const icon = document.createElement('i');
+    icon.className = `fa-solid ${game.icon ?? 'fa-gamepad'} stg-game-icon`;
+    icon.setAttribute('aria-hidden', 'true');
+
+    const label = document.createElement('span');
+    label.className = 'stg-game-label';
+
+    const title = document.createElement('b');
+    title.textContent = game.title;
+    label.appendChild(title);
+
+    if (game.tagline) {
+        const tagline = document.createElement('small');
+        tagline.className = 'stg-game-tagline';
+        tagline.textContent = game.tagline;
+        label.appendChild(tagline);
+    }
+
+    const chevron = document.createElement('i');
+    chevron.className = 'fa-solid fa-chevron-down stg-game-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+
+    toggle.append(icon, label, chevron);
+    toggle.addEventListener('click', () => {
+        const open = toggle.getAttribute('aria-expanded') === 'true';
+        toggle.setAttribute('aria-expanded', open ? 'false' : 'true');
+        body.hidden = open;
+        section.classList.toggle('stg-game-open', !open);
+    });
+
+    // Настройки и статистика — в отдельных контейнерах: renderAllStats()
+    // перерисовывает только статистику, не трогая контролы.
+    const settingsBox = document.createElement('div');
+    settingsBox.className = 'stg-game-controls';
+    const statsBox = document.createElement('div');
+    statsBox.className = 'stg-game-stats';
+    statsBox.id = `stg_stats_${game.id}`;
+    body.append(settingsBox, statsBox);
+
+    game.renderSettings?.(settingsBox, makeApi(game));
+    game.renderStats?.(statsBox, makeApi(game));
+
+    section.append(toggle, body);
+    return section;
 }
 
 // Общий блок настроек — то, что относится ко всем играм сразу. Пока в нём одно
@@ -73,8 +128,17 @@ export function renderCommonSettings(container) {
     const section = document.createElement('div');
     section.className = 'stg-common-settings';
 
-    const heading = document.createElement('b');
-    heading.textContent = 'Оформление';
+    const heading = document.createElement('div');
+    heading.className = 'stg-section-heading';
+
+    const headingIcon = document.createElement('i');
+    headingIcon.className = 'fa-solid fa-palette';
+    headingIcon.setAttribute('aria-hidden', 'true');
+
+    const headingText = document.createElement('b');
+    headingText.textContent = 'Оформление';
+
+    heading.append(headingIcon, headingText);
     section.appendChild(heading);
 
     const control = select('stgames_appearance', APPEARANCE_OPTIONS, getAppearance(), (value) => {

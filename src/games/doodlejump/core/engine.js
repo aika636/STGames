@@ -21,6 +21,11 @@ export const PLAYER_W = 40;
 export const PLAYER_H = 40;
 export const PLATFORM_H = 12;
 
+// Допуск приземления по горизонтали, wu в каждую сторону от платформы. Три — это
+// примерно два CSS-пикселя на экране: попадание «по краю» перестаёт срываться, но
+// платформа не превращается в магнит (тест держит промах с 20 wu промахом).
+export const EDGE_GRACE = 3;
+
 // Горизонталь: не мгновенная смена скорости, а разгон — иначе фигурка дёргается и в
 // прыжке невозможно тонко подправить траекторию. MOVE_ACCEL подобран так, чтобы разгон до
 // максимума занимал ~0.15 с: ощущается отзывчиво, но не как телепорт.
@@ -247,12 +252,28 @@ export function ensurePlatformsAbove(state, targetY) {
 
 // Пересечение по x с учётом wrap: фигурка, стоящая на стыке краёв, видна и слева, и
 // справа — поэтому проверяем её прямоугольник в двух положениях.
-function overlapsX(px, platform) {
-    const left = platform.x;
-    const right = platform.x + platform.w;
-    if (px + PLAYER_W > left && px < right) return true;
-    return px + PLAYER_W - WORLD_W > left && px - WORLD_W < right;
+// Перекрытие по x за подшаг — не точки, а ОТРЕЗКА траектории. Точка теряла попадания:
+// на полной горизонтальной скорости фигурка проезжает за подшаг MOVE_SPEED·STEP_MS = 3.5 wu
+// (около 2.6 CSS-пикселя на экране), и если начало подшага ещё левее края платформы, а
+// конец уже правее, обе проверки давали «мимо» — ровно жалоба «визуально попал, а не
+// засчитало». Платформа сверяется в трёх копиях, своей и сдвинутых на ±WORLD_W: тем же
+// приёмом ловится wrap, включая случай, когда край экрана пересёк сам отрезок.
+//
+// EDGE_GRACE — жанровый допуск: попадание чуть щедрее геометрии. Сужать коробку (третья
+// версия из todo) нельзя — фигурка рисуется со скруглёнными углами, коробка и так шире
+// видимого силуэта у краёв, и сужение усилило бы ту же жалобу.
+function overlapsXSweep(fromX, toX, platform) {
+    const lo = Math.min(fromX, toX);
+    const hi = Math.max(fromX, toX) + PLAYER_W;
+    const left = platform.x - EDGE_GRACE;
+    const right = platform.x + platform.w + EDGE_GRACE;
+    for (const shift of X_SWEEP_SHIFTS) {
+        if (hi > left + shift && lo < right + shift) return true;
+    }
+    return false;
 }
+
+const X_SWEEP_SHIFTS = Object.freeze([0, WORLD_W, -WORLD_W]);
 
 function isSolid(platform) {
     return !platform.broken;
@@ -276,7 +297,11 @@ export function stepOnce(state) {
     if (player.vx > 1) player.facing = 1;
     else if (player.vx < -1) player.facing = -1;
 
+    // Отрезок траектории за подшаг: от прежнего x к «сырому» новому, ДО wrap. Именно по
+    // нему ищется платформа — см. overlapsXSweep().
+    const prevX = player.x;
     player.x += player.vx * dt;
+    const rawX = player.x;
     // Wrap по горизонтали — часть жанра, а не настройка: уйдя за левый край, фигурка
     // выходит справа. Скорость и y при этом не трогаем.
     if (player.x < 0) player.x += WORLD_W;
@@ -311,12 +336,16 @@ export function stepOnce(state) {
         for (const platform of state.platforms) {
             if (!isSolid(platform)) continue;
             if (prevBottom > platform.y || bottom < platform.y) continue;
-            if (!overlapsX(player.x, platform)) continue;
+            if (!overlapsXSweep(prevX, rawX, platform)) continue;
             if (hit === null || platform.y < hit.y) hit = platform;
         }
         if (hit) {
             player.y = hit.y - PLAYER_H;
             player.vy = hit.kind === 'spring' ? JUMP_VELOCITY * SPRING_MULT : JUMP_VELOCITY;
+            // Движущаяся платформа подталкивает: на кадре приземления фигурка забирает её
+            // скорость. Не «навсегда» — игрок тут же перебивает это разгоном к своей
+            // целевой скорости (~0.15 с), режима «стоим на платформе» в этой физике нет.
+            if (hit.kind === 'moving' && hit.vx) player.vx += hit.vx;
             state.landings += 1;
             result.landed = true;
             // crumbling отскок даёт, но ровно один — дальше в столкновениях не участвует.

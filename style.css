@@ -1212,11 +1212,21 @@
     text-align: center;
 }
 
-/* Кнопка магазина стоит в одном ряду со счётом — поэтому мельче обычной menu_button:
-   шапка не должна разъезжаться на узком экране. */
+/* Общая ширина кнопкам: «Ещё раз» переносилось на две строки и становилось вдвое выше
+   однострочного «Магазина» — во всех палитрах и на всех форматах. */
+.doodlejump-over-content .menu_button {
+    min-width: 9em;
+    min-height: 28px;
+    white-space: nowrap;
+}
+
+/* Кнопка магазина стоит под счётчиками, во всю ширину своей строки грида: мельче обычной
+   menu_button по шрифту, но не по высоте — 22 px были ниже нормы тач-цели. */
 .doodlejump-shop-open {
-    flex: 0 0 auto;
-    padding: 2px 8px;
+    grid-column: 1 / -1;
+    justify-self: center;
+    padding: 2px 10px;
+    min-height: 28px;
     font-size: 0.85em;
 }
 
@@ -1229,9 +1239,16 @@
     /* Витрина из двенадцати плиток выше сцены на телефоне: центрируем не выравниванием, а
        margin: auto у содержимого — при align-items: center переполнение обрезало бы
        верхние ряды, до которых уже не докрутить. */
-    align-items: flex-start;
+    align-items: stretch;
     justify-content: center;
-    overflow: auto;
+    /* Прокручивается только список плиток (ниже), а не витрина целиком: раньше её
+       содержимое было 877 px при окне 522 px, и кнопка «Закрыть» оказывалась за кадром
+       ещё до того, как игрок понимал, что тут можно крутить. */
+    overflow: hidden;
+    /* Число колонок считается от ширины СЦЕНЫ, а не вьюпорта: в альбоме телефона экран
+       844 px, а сцена — 127, и медиазапрос max-width: 500px там не срабатывал, оставляя
+       одну колонку на двенадцать рядов. */
+    container-type: inline-size;
     border-radius: 10px;
     /* Витрина перекрывает сцену целиком и потому непрозрачна во всех режимах: под
        ней и поле, и оверлей падения, и просвечивать они не должны. */
@@ -1250,23 +1267,51 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    margin: auto;
     padding: 10px;
     width: 100%;
+    height: 100%;
     box-sizing: border-box;
     text-align: center;
 }
 
 /* Сетка, а не flex-wrap: двенадцать плиток должны вставать ровными рядами одинаковой
-   ширины, а число колонок — считаться от ширины сцены (на 360×640 выходит три). */
+   ширины, а число колонок — считаться от ширины сцены (на 360×640 выходит три).
+   Единственный, кто прокручивается: заголовок, баланс и «Закрыть» остаются на месте. */
 .doodlejump-shop-items {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
     align-items: stretch;
+    align-content: start;
     justify-content: center;
     gap: 8px;
     width: 100%;
     max-width: 380px;
+    flex: 1 1 auto;
+    /* Без min-height грид-контейнер во флексе не даёт себя ужать ниже содержимого, и
+       прокрутка достаётся не ему, а всей витрине — то есть кнопке «Закрыть» снова
+       уезжать за кадр. */
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* Узкая сцена (телефон в портрете и в альбоме): плитка мельче, иначе двенадцать штук
+   уводят «Закрыть» далеко вниз. Порог 66px подобран под самую узкую сцену — при нём
+   встаёт третья колонка, и двенадцать скинов это четыре ряда, а не шесть. */
+@container (max-width: 320px) {
+    .doodlejump-shop-items {
+        grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
+        gap: 6px;
+    }
+
+    .doodlejump-shop-item {
+        padding: 4px;
+        gap: 2px;
+    }
+
+    .doodlejump-shop-preview {
+        width: 46px;
+        height: 46px;
+    }
 }
 
 .doodlejump-shop-item {
@@ -1279,6 +1324,8 @@
     border: 1px solid var(--stg-line);
     border-radius: 8px;
     background-color: var(--stg-tint-soft);
+    /* Плитка целиком — тач-цель: обработчик висит и на ней, а не только на кнопке. */
+    cursor: pointer;
 }
 
 /* Кнопка занимает плитку целиком и переносит подпись: «Купить за 385» в колонку 84px
@@ -1286,6 +1333,8 @@
 .doodlejump-shop-item .doodlejump-shop-action {
     width: 100%;
     padding: 3px 4px;
+    /* 22 px по высоте были меньше нормы тач-цели на всех форматах. */
+    min-height: 28px;
     font-size: 0.8em;
     line-height: 1.2;
     white-space: normal;
@@ -1333,24 +1382,6 @@
         min-height: 48px;
     }
 
-    /* Витрина на телефоне: плитка мельче, иначе двенадцать штук уводят кнопку «Закрыть»
-       далеко за нижний край сцены. Порог 66px подобран под самую узкую сцену (360×640
-       даёт витрине 220px под плитки): при нём встаёт третья колонка, и двенадцать
-       скинов — это четыре ряда, а не шесть. */
-    .doodlejump-shop-items {
-        grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
-        gap: 6px;
-    }
-
-    .doodlejump-shop-item {
-        padding: 4px;
-        gap: 2px;
-    }
-
-    .doodlejump-shop-preview {
-        width: 46px;
-        height: 46px;
-    }
 }
 
 /* Телефон в альбоме. Такой блок есть у «Слов» и «Балды», а тут его не было — и на
@@ -1377,17 +1408,6 @@
         min-height: 36px;
     }
 
-    /* Витрина: колонки от ширины сцены не считаются медиазапросом (в альбоме экран
-       широкий, а сцена узкая), поэтому порог тот же, что на телефоне. */
-    .doodlejump-shop-items {
-        grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
-        gap: 6px;
-    }
-
-    .doodlejump-shop-preview {
-        width: 40px;
-        height: 40px;
-    }
 }
 
 /* --- Окно игры: реверси --- */

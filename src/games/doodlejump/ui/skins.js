@@ -106,7 +106,154 @@ function drawGhost(ctx2d, x, y, w, h, facing, colors) {
     dot(ctx2d, far, eyeY, w * 0.11);
 }
 
+// «Кристалл»: ромб без единой скруглённой стороны — силуэт целиком из прямых, острый
+// сверху и снизу, ни на что круглое не похожий. Направление даёт грань-блик: она всегда
+// на той стороне, куда смотрит фигурка, и подпирается сдвинутыми туда же глазами.
+function drawCrystal(ctx2d, x, y, w, h, facing, colors) {
+    const cx = x + w / 2;
+    const waist = y + h * 0.36;
+
+    ctx2d.fillStyle = colors.body;
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx, y);
+    ctx2d.lineTo(x + w, waist);
+    ctx2d.lineTo(cx, y + h);
+    ctx2d.lineTo(x, waist);
+    ctx2d.fill();
+
+    // Блик — треугольник от вершины к «плечу» и к центру: одна светлая грань из четырёх.
+    const shoulder = facing < 0 ? x : x + w;
+    ctx2d.fillStyle = colors.facet;
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx, y);
+    ctx2d.lineTo(shoulder, waist);
+    ctx2d.lineTo(cx, y + h * 0.62);
+    ctx2d.fill();
+
+    const eyeY = y + h * 0.44;
+    ctx2d.fillStyle = colors.eye;
+    dot(ctx2d, cx + (facing < 0 ? -w * 0.16 : w * 0.16), eyeY, w * 0.075);
+    dot(ctx2d, cx + (facing < 0 ? -w * 0.02 : w * 0.02), eyeY, w * 0.075);
+}
+
+// «Капля»: широкое круглое дно и острый носик сверху, завалившийся по ходу движения.
+// Верх-низ у неё несимметричны — этим и отличается от ромба со звездой, а наклон носика
+// показывает направление раньше, чем разглядишь глаза.
+function drawDrop(ctx2d, x, y, w, h, facing, colors) {
+    const r = w * 0.42;
+    const cx = x + w / 2;
+    const cy = y + h - r * 1.02;
+
+    ctx2d.fillStyle = colors.body;
+    // Носик отдельной заливкой поверх круга: объединение двух простых фигур читается как
+    // одна капля и не требует кривых, которых нет в jsdom-заглушке контекста.
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx + (facing < 0 ? -w * 0.2 : w * 0.2), y);
+    ctx2d.lineTo(cx - r * 0.72, cy - r * 0.5);
+    ctx2d.lineTo(cx + r * 0.72, cy - r * 0.5);
+    ctx2d.fill();
+    dot(ctx2d, cx, cy, r);
+
+    const eyeY = cy - r * 0.18;
+    ctx2d.fillStyle = colors.eye;
+    dot(ctx2d, cx + (facing < 0 ? -r * 0.5 : r * 0.06), eyeY, w * 0.085);
+    dot(ctx2d, cx + (facing < 0 ? -r * 0.06 : r * 0.5), eyeY, w * 0.085);
+}
+
+// «Звезда»: пять лучей — контур с провалами между вершинами, единственный такой в наборе:
+// у всех остальных силуэт выпуклый. Наклон всей звезды по facing работает как поза «несёт
+// вперёд», глаза в середине подтверждают направление.
+function drawStar(ctx2d, x, y, w, h, facing, colors) {
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const outer = Math.min(w, h) * 0.5;
+    const inner = outer * 0.44;
+    const tilt = (facing < 0 ? -1 : 1) * 0.22;
+
+    ctx2d.fillStyle = colors.body;
+    ctx2d.beginPath();
+    for (let i = 0; i < 10; i++) {
+        const radius = i % 2 === 0 ? outer : inner;
+        const angle = -Math.PI / 2 + tilt + (i * Math.PI) / 5;
+        const px = cx + Math.cos(angle) * radius;
+        const py = cy + Math.sin(angle) * radius;
+        if (i === 0) ctx2d.moveTo(px, py);
+        else ctx2d.lineTo(px, py);
+    }
+    ctx2d.fill();
+
+    const eyeY = cy + h * 0.02;
+    ctx2d.fillStyle = colors.eye;
+    dot(ctx2d, cx + (facing < 0 ? -w * 0.15 : w * 0.02), eyeY, w * 0.07);
+    dot(ctx2d, cx + (facing < 0 ? -w * 0.02 : w * 0.15), eyeY, w * 0.07);
+}
+
+// «Краб»: приземистое тело с выступами по краям — клешни сверху и лапы по бокам. Контур
+// рваный не снизу (как у призрака), а по всему периметру, и держится ниже центра габарита.
+// Направление показывает поднятая клешня: она всегда с той стороны, куда смотрит краб.
+function drawCrab(ctx2d, x, y, w, h, facing, colors) {
+    const bodyTop = y + h * 0.42;
+    const bodyH = h * 0.36;
+    const cy = bodyTop + bodyH / 2;
+
+    // Лапы — три косые линии с каждой стороны, торчат за габарит тела.
+    ctx2d.strokeStyle = colors.limb;
+    ctx2d.lineWidth = Math.max(1, w * 0.06);
+    ctx2d.beginPath();
+    for (const k of [0.15, 0.5, 0.85]) {
+        const ly = bodyTop + bodyH * k;
+        ctx2d.moveTo(x + w * 0.22, ly);
+        ctx2d.lineTo(x, ly + h * 0.14);
+        ctx2d.moveTo(x + w * 0.78, ly);
+        ctx2d.lineTo(x + w, ly + h * 0.14);
+    }
+    ctx2d.stroke();
+
+    ctx2d.fillStyle = colors.body;
+    fillBox(ctx2d, x + w * 0.12, bodyTop, w * 0.76, bodyH, bodyH * 0.45);
+
+    // Клешни: ближняя к направлению взгляда крупнее и выше — по ней и читается facing.
+    ctx2d.fillStyle = colors.limb;
+    const nearX = facing < 0 ? x + w * 0.12 : x + w * 0.88;
+    const farX = facing < 0 ? x + w * 0.88 : x + w * 0.12;
+    dot(ctx2d, nearX, y + h * 0.24, w * 0.16);
+    dot(ctx2d, farX, y + h * 0.36, w * 0.11);
+
+    ctx2d.fillStyle = colors.eye;
+    dot(ctx2d, x + w * (facing < 0 ? 0.34 : 0.5), cy - bodyH * 0.12, w * 0.075);
+    dot(ctx2d, x + w * (facing < 0 ? 0.5 : 0.66), cy - bodyH * 0.12, w * 0.075);
+}
+
+// «Месяц»: единственный вогнутый силуэт набора — серп с дырой посередине, сквозь которую
+// видно поле. Вырез уводится назад, поэтому толстая доля всегда впереди: получается
+// «нос по ходу движения», и facing читается по одной только форме.
+function drawMoon(ctx2d, x, y, w, h, facing, colors) {
+    const outer = Math.min(w, h) / 2;
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const inner = outer * 0.82;
+    const shift = (facing < 0 ? 1 : -1) * outer * 0.62;
+
+    // Два круга в одном пути и заливка по правилу evenodd: внутренний вырезает серп.
+    // Отдельный moveTo перед вторым кругом обязателен — иначе браузер соединил бы дуги
+    // хордой и вырез поехал бы.
+    ctx2d.fillStyle = colors.body;
+    ctx2d.beginPath();
+    ctx2d.arc(cx, cy, outer, 0, Math.PI * 2);
+    ctx2d.moveTo(cx + shift + inner, cy);
+    ctx2d.arc(cx + shift, cy, inner, 0, Math.PI * 2);
+    ctx2d.fill('evenodd');
+
+    ctx2d.fillStyle = colors.eye;
+    dot(ctx2d, cx + (facing < 0 ? -outer * 0.6 : outer * 0.6), cy - outer * 0.28, w * 0.075);
+}
+
 // Порядок в списке — порядок плиток в магазине: сначала бесплатный, дальше по цене.
+//
+// Цены: 0 / 25 / 60 / 105 / 160 / 225 / 300 / 385 — шаг растёт ровно на 10 монет
+// (25, 35, 45, 55, 65, 75, 85). Заезд при coinChance ≈ 0.3 на этаж приносит порядка
+// двух-трёх десятков монет, так что первые скины берутся за заезд-другой, а самый дорогой
+// — примерно за полтора десятка: копить есть смысл, но потолок не уходит за горизонт.
 export const SKINS = Object.freeze([
     Object.freeze({
         id: DEFAULT_SKIN,
@@ -138,6 +285,58 @@ export const SKINS = Object.freeze([
             eye: ['--stg-doodlejump-player-eye', '#14161b'],
         }),
         draw: drawGhost,
+    }),
+    Object.freeze({
+        id: 'crystal',
+        title: 'Кристалл',
+        price: 105,
+        palette: Object.freeze({
+            body: ['--stg-doodlejump-skin-crystal', '#7ad0e8'],
+            facet: ['--stg-doodlejump-skin-crystal-facet', '#cdf3fb'],
+            eye: ['--stg-doodlejump-player-eye', '#14161b'],
+        }),
+        draw: drawCrystal,
+    }),
+    Object.freeze({
+        id: 'drop',
+        title: 'Капля',
+        price: 160,
+        palette: Object.freeze({
+            body: ['--stg-doodlejump-skin-drop', '#77d18a'],
+            eye: ['--stg-doodlejump-player-eye', '#14161b'],
+        }),
+        draw: drawDrop,
+    }),
+    Object.freeze({
+        id: 'star',
+        title: 'Звезда',
+        price: 225,
+        palette: Object.freeze({
+            body: ['--stg-doodlejump-skin-star', '#f0c548'],
+            eye: ['--stg-doodlejump-player-eye', '#14161b'],
+        }),
+        draw: drawStar,
+    }),
+    Object.freeze({
+        id: 'crab',
+        title: 'Краб',
+        price: 300,
+        palette: Object.freeze({
+            body: ['--stg-doodlejump-skin-crab', '#e07a4d'],
+            limb: ['--stg-doodlejump-skin-crab-limb', '#f2a071'],
+            eye: ['--stg-doodlejump-player-eye', '#14161b'],
+        }),
+        draw: drawCrab,
+    }),
+    Object.freeze({
+        id: 'moon',
+        title: 'Месяц',
+        price: 385,
+        palette: Object.freeze({
+            body: ['--stg-doodlejump-skin-moon', '#f2e8b0'],
+            eye: ['--stg-doodlejump-player-eye', '#14161b'],
+        }),
+        draw: drawMoon,
     }),
 ]);
 

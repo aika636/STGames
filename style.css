@@ -287,6 +287,13 @@
     --stg-doodlejump-skin-ufo: #a8b0c0;
     --stg-doodlejump-skin-ufo-dome: #8fe0d0;
     --stg-doodlejump-skin-ghost: #d9d6e8;
+    --stg-doodlejump-skin-crystal: #7ad0e8;
+    --stg-doodlejump-skin-crystal-facet: #cdf3fb;
+    --stg-doodlejump-skin-drop: #77d18a;
+    --stg-doodlejump-skin-star: #f0c548;
+    --stg-doodlejump-skin-crab: #e07a4d;
+    --stg-doodlejump-skin-crab-limb: #f2a071;
+    --stg-doodlejump-skin-moon: #f2e8b0;
 }
 
 /* Тёмная палитра. Не «тема ST потемнее», а свой набор: фон окна чуть светлее чёрного,
@@ -324,6 +331,13 @@
     --stg-doodlejump-skin-ufo: #b6bfd0;
     --stg-doodlejump-skin-ufo-dome: #8fe0d0;
     --stg-doodlejump-skin-ghost: #dcd9ec;
+    --stg-doodlejump-skin-crystal: #86dcf3;
+    --stg-doodlejump-skin-crystal-facet: #d6f6ff;
+    --stg-doodlejump-skin-drop: #86dd99;
+    --stg-doodlejump-skin-star: #f4cf5c;
+    --stg-doodlejump-skin-crab: #ec8757;
+    --stg-doodlejump-skin-crab-limb: #f7ae7e;
+    --stg-doodlejump-skin-moon: #f6eec0;
 }
 
 /* Светлая палитра. Поле белое, а подложка окна — тёплый серый: белое поле на белом окне
@@ -360,6 +374,13 @@
     --stg-doodlejump-skin-ufo: #5f6a80;
     --stg-doodlejump-skin-ufo-dome: #2f8f7d;
     --stg-doodlejump-skin-ghost: #5b5878;
+    --stg-doodlejump-skin-crystal: #1f7c93;
+    --stg-doodlejump-skin-crystal-facet: #46a8c0;
+    --stg-doodlejump-skin-drop: #2f7d45;
+    --stg-doodlejump-skin-star: #9a7412;
+    --stg-doodlejump-skin-crab: #a8492a;
+    --stg-doodlejump-skin-crab-limb: #c46a45;
+    --stg-doodlejump-skin-moon: #8a6f18;
 }
 
 /* Своя палитра — своя подложка: без неё шапка окна и подписи остались бы цветом темы ST
@@ -1137,7 +1158,10 @@
     position: absolute;
     inset: 0;
     display: flex;
-    align-items: center;
+    /* Витрина из восьми плиток выше сцены на телефоне: центрируем не выравниванием, а
+       margin: auto у содержимого — при align-items: center переполнение обрезало бы
+       верхние ряды, до которых уже не докрутить. */
+    align-items: flex-start;
     justify-content: center;
     overflow: auto;
     border-radius: 10px;
@@ -1151,16 +1175,23 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
+    margin: auto;
     padding: 10px;
+    width: 100%;
+    box-sizing: border-box;
     text-align: center;
 }
 
+/* Сетка, а не flex-wrap: восемь плиток должны вставать ровными рядами одинаковой ширины,
+   а число колонок — считаться от ширины сцены (на 360×640 выходит три). */
 .doodlejump-shop-items {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
     align-items: stretch;
     justify-content: center;
     gap: 8px;
+    width: 100%;
+    max-width: 380px;
 }
 
 .doodlejump-shop-item {
@@ -1169,9 +1200,20 @@
     align-items: center;
     gap: 4px;
     padding: 6px;
+    min-width: 0;
     border: 1px solid var(--stg-line);
     border-radius: 8px;
     background-color: var(--stg-tint-soft);
+}
+
+/* Кнопка занимает плитку целиком и переносит подпись: «Купить за 385» в колонку 84px
+   одной строкой не влезает, а раздувать колонку ради неё — терять третий столбец. */
+.doodlejump-shop-item .doodlejump-shop-action {
+    width: 100%;
+    padding: 3px 4px;
+    font-size: 0.8em;
+    line-height: 1.2;
+    white-space: normal;
 }
 
 /* Надетый скин обведён акцентом: «состояние» видно раньше, чем прочитана подпись. */
@@ -1182,6 +1224,7 @@
 .doodlejump-shop-preview {
     width: 72px;
     height: 72px;
+    max-width: 100%;
 }
 
 .doodlejump-shop-note {
@@ -1209,6 +1252,18 @@
     .doodlejump-btn {
         min-width: 92px;
         min-height: 48px;
+    }
+
+    /* Витрина на телефоне: плитка мельче, иначе восемь штук в три колонки уводят кнопку
+       «Закрыть» далеко за нижний край сцены. */
+    .doodlejump-shop-items {
+        grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+        gap: 6px;
+    }
+
+    .doodlejump-shop-preview {
+        width: 52px;
+        height: 52px;
     }
 }
 

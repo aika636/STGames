@@ -7,7 +7,7 @@
 
 import { JSDOM } from 'jsdom';
 import { assert, assertEqual, report, test } from '../_harness.mjs';
-import { BOOST, PICKUP_W, PLAYER_W, WORLD_W } from '../../src/games/doodlejump/core/engine.js';
+import { BOOST, PICKUP_W, PLAYER_H, PLAYER_W, WORLD_W } from '../../src/games/doodlejump/core/engine.js';
 
 const dom = new JSDOM(
     '<!doctype html><html><body><div id="extensionsMenu"></div></body></html>',
@@ -39,22 +39,28 @@ globalThis.SillyTavern = { getContext: () => context };
 // платформ красятся по-разному, а пружинка и трещины вообще рисуются.
 const fills = [];
 const lines = [];
+// Заодно счётчик paints: заливки путями (arc/lineTo + fill) координат не оставляют, и
+// только по нему видно, что скин вообще что-то нарисовал, а не тихо ничего не сделал.
 const mock2d = {
     pass: -1,
+    paints: 0,
     fill_: null,
     stroke_: null,
     pen: null,
     clearRect() { this.pass += 1; },
-    fillRect(x, y, w, h) { fills.push({ pass: this.pass, x, y, w, h, style: this.fill_ }); },
+    fillRect(x, y, w, h) {
+        fills.push({ pass: this.pass, x, y, w, h, style: this.fill_ });
+        this.paints += 1;
+    },
     beginPath() {},
     moveTo(x, y) { this.pen = { x, y }; },
     lineTo(x, y) {
         lines.push({ pass: this.pass, from: this.pen, to: { x, y }, style: this.stroke_ });
         this.pen = { x, y };
     },
-    stroke() {},
+    stroke() { this.paints += 1; },
     arc() {},
-    fill() {},
+    fill() { this.paints += 1; },
 };
 Object.defineProperty(mock2d, 'fillStyle', { set(v) { this.fill_ = v; }, configurable: true });
 Object.defineProperty(mock2d, 'strokeStyle', { set(v) { this.stroke_ = v; }, configurable: true });
@@ -551,6 +557,57 @@ test('битый кошелёк чинится при записи монет, �
 
 useDefaultRng();
 
+// --- Реестр скинов (§G.4 плана): контракт и отрисовка каждой формы.
+//
+// Формы рисуются примитивами, и легко взять метод, которого нет ни в заглушке, ни в
+// старом браузере. Цикл по всему реестру — страховка ровно от этого: если скин зовёт
+// что-то лишнее, тест падает здесь, а не у игрока на канвасе.
+
+const { SKINS: SKIN_REGISTRY, getSkin: lookupSkin, resolveColors: resolveSkinColors } =
+    await import('../../src/games/doodlejump/ui/skins.js');
+const { DEFAULT_SKIN } = await import('../../src/games/doodlejump/core/wallet.js');
+
+test('реестр скинов: id и названия уникальны, цены целые, палитра с фолбэком', () => {
+    assert(SKIN_REGISTRY.length === 8, `скинов в реестре: ${SKIN_REGISTRY.length}`);
+    assertEqual(new Set(SKIN_REGISTRY.map((s) => s.id)).size, SKIN_REGISTRY.length, 'id уникальны');
+    assertEqual(new Set(SKIN_REGISTRY.map((s) => s.title)).size, SKIN_REGISTRY.length, 'названия уникальны');
+
+    for (const skin of SKIN_REGISTRY) {
+        assert(typeof skin.id === 'string' && skin.id.length > 0, `id непустой: ${skin.id}`);
+        assert(typeof skin.title === 'string' && skin.title.length > 0, `название непустое: ${skin.id}`);
+        assert(Number.isInteger(skin.price) && skin.price >= 0, `цена — неотрицательное целое: ${skin.id}`);
+        assertEqual(typeof skin.draw, 'function', `draw — функция: ${skin.id}`);
+
+        const entries = Object.entries(skin.palette);
+        assert(entries.length > 0, `палитра непустая: ${skin.id}`);
+        for (const [key, value] of entries) {
+            assert(Array.isArray(value) && value.length === 2, `${skin.id}.${key} — пара «имя, фолбэк»`);
+            assert(value[0].startsWith('--stg-doodlejump-'), `${skin.id}.${key} берёт цвет из слоя палитры`);
+            assert(/^#[0-9a-f]{6}$/i.test(value[1]), `${skin.id}.${key} с литеральным фолбэком`);
+        }
+        assertEqual(lookupSkin(skin.id), skin, `getSkin находит ${skin.id}`);
+    }
+});
+
+test('порядок реестра — по возрастанию цены: он же порядок плиток в магазине', () => {
+    const prices = SKIN_REGISTRY.map((s) => s.price);
+    assertEqual(prices[0], 0, 'первый скин бесплатный');
+    for (let i = 1; i < prices.length; i++) {
+        assert(prices[i] > prices[i - 1], `цена растёт: ${prices[i - 1]} → ${prices[i]}`);
+    }
+});
+
+test('каждый скин рисуется обеими сторонами и ничего не рисует мимо контекста', () => {
+    const colors = (skin) => resolveSkinColors(skin, (name, fallback) => fallback);
+    for (const skin of SKIN_REGISTRY) {
+        for (const facing of [1, -1]) {
+            const before = mock2d.paints;
+            skin.draw(mock2d, 0, 0, PLAYER_W, PLAYER_H, facing, colors(skin));
+            assert(mock2d.paints > before, `${skin.id} нарисовался при facing=${facing}`);
+        }
+    }
+});
+
 // --- Магазин скинов (§G.3 плана): оверлей внутри игры, а не игра в хабе.
 
 function shopBalance(root) {
@@ -584,7 +641,12 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         assertEqual(shop.style.display, 'flex', 'магазин открыт');
         assert(root.querySelector('.doodlejump-status').textContent.includes('Магазин'), 'статус говорит о паузе');
         assertEqual(shopBalance(root), 500, 'баланс — кошелёк, а не счётчик заезда');
-        assertEqual(root.querySelectorAll('.doodlejump-shop-item').length, 3, 'три плитки скинов');
+        assertEqual(
+            root.querySelectorAll('.doodlejump-shop-item').length,
+            SKIN_REGISTRY.length,
+            'на витрине все скины реестра',
+        );
+        assertEqual(root.querySelectorAll('.doodlejump-shop-item').length, 8, 'восемь плиток скинов');
         assert(root.querySelector('.doodlejump-shop-preview'), 'превью рисуется на канвасе');
 
         frames(10);
@@ -634,6 +696,38 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         shopItem(root, 'ghost').querySelector('.doodlejump-shop-action').click();
         assertEqual(shopBalance(root), 10, 'монеты на месте');
         assert(!gameSkins().owned.includes('ghost'), 'скин не выдан');
+    });
+
+    // Самый дорогой скин — конец ценовой лестницы: его и проверяем на обеих границах,
+    // иначе «денег хватает» тестировалось бы только на первой ступеньке.
+    const top = SKIN_REGISTRY[SKIN_REGISTRY.length - 1];
+
+    function reopenShop(coins) {
+        getSettings().games.doodlejump.wallet.coins = coins;
+        root.querySelector('.doodlejump-shop-close').click();
+        root.querySelector('.doodlejump-shop-open').click();
+    }
+
+    test('монеты на одну меньше цены — самый дорогой скин не выдают', () => {
+        reopenShop(top.price - 1);
+        assertEqual(shopBalance(root), top.price - 1, 'баланс перечитан');
+        shopItem(root, top.id).querySelector('.doodlejump-shop-action').click();
+        assertEqual(shopBalance(root), top.price - 1, 'монеты на месте');
+        assert(!gameSkins().owned.includes(top.id), `${top.id} не выдан`);
+    });
+
+    test('ровно по цене — самый дорогой скин покупается и надевается', () => {
+        reopenShop(top.price);
+        shopItem(root, top.id).querySelector('.doodlejump-shop-action').click();
+        assertEqual(shopBalance(root), 0, 'списано ровно всё');
+        assert(gameSkins().owned.includes(top.id), `${top.id} в купленных`);
+        assertEqual(gameSkins().current, top.id, 'и надет');
+        assert(shopItem(root, top.id).classList.contains('is-worn'), 'плитка перерисована надетой');
+
+        // Возвращаем форму по умолчанию: проверки ниже ищут фигурку по заливке шириной
+        // PLAYER_W, а её оставляет только прямоугольный силуэт.
+        shopItem(root, DEFAULT_SKIN).querySelector('.doodlejump-shop-action').click();
+        assertEqual(gameSkins().current, DEFAULT_SKIN, 'надет бесплатный');
     });
 
     test('закрытие магазина возвращает игру', () => {

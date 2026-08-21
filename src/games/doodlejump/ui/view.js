@@ -37,6 +37,7 @@ export function createView(options = {}) {
     let ctx2d = null;
     let lastW = 0;
     let lastH = 0;
+    let lastDpr = 0;
 
     // Пружинка над платформой — зигзаг в четыре звена: рисуется нейтральным цветом
     // платформы, а не своим, чтобы читаться и на жёлтой пружине, и на любой теме.
@@ -95,6 +96,11 @@ export function createView(options = {}) {
     // Монета — кружок в блёклом ореоле: круглый силуэт не спутать ни с бустером, ни с
     // платформой даже там, где цвета темы сблизились. Ореол — тот же цвет с альфой,
     // рисуется первым и шире ядра; второй переменной палитры на это заводить не за что.
+    //
+    // Плюс контур по краю ореола, тем же цветом в полную силу: на светлом поле ореол
+    // альфой 0.35 почти сливался с фоном, и от монеты оставалось одно ядро — размером с
+    // крошку. Контур не зависит от того, светлый фон или тёмный: он того же цвета, что и
+    // сама монета, и потому читается везде, где читается она.
     function drawCoin(x, top, scale, color) {
         const r = (PICKUP_W * scale) / 2;
         const cx = x + r;
@@ -105,6 +111,11 @@ export function createView(options = {}) {
         ctx2d.arc(cx, cy, r, 0, Math.PI * 2);
         ctx2d.fill();
         ctx2d.globalAlpha = 1;
+        ctx2d.strokeStyle = color;
+        ctx2d.lineWidth = Math.max(1, scale);
+        ctx2d.beginPath();
+        ctx2d.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx2d.stroke();
         ctx2d.beginPath();
         ctx2d.arc(cx, cy, r * 0.62, 0, Math.PI * 2);
         ctx2d.fill();
@@ -112,15 +123,17 @@ export function createView(options = {}) {
 
     // Пока бустер активен — полоска остатка над фигуркой: без неё игрок не понимает,
     // сколько ещё лететь, и не успевает прицелиться к концу полёта.
-    function drawBoostGauge(player, py, scale, color) {
-        const boost = player.boost;
+    // worldX отдельным параметром, а не player.x: у фигурки, свисающей за край мира,
+    // есть копия у противоположного края, и полоска обязана быть у обеих. Без этого
+    // фигурка при переносе была видна с двух сторон, а её полоска — с одной и обрезанной.
+    function drawBoostGauge(worldX, boost, py, scale, color) {
         const spec = BOOST[boost.kind];
         if (!spec) return;
         const left = Math.max(0, Math.min(1, boost.msLeft / spec.ms));
         const w = PLAYER_W * scale;
         const h = Math.max(2, 4 * scale);
         // py приходит в мировых единицах, как и в drawPlayer, — масштабируем здесь.
-        const x = player.x * scale;
+        const x = worldX * scale;
         const top = py * scale - h * 2;
         ctx2d.fillStyle = color;
         ctx2d.globalAlpha = 0.3;
@@ -141,10 +154,14 @@ export function createView(options = {}) {
         // любой из них — поворот телефона меняет обе.
         const cssW = canvas.clientWidth || FALLBACK_W;
         const cssH = canvas.clientHeight || FALLBACK_H;
-        if (cssW !== lastW || cssH !== lastH) {
+        // dpr — третий вход наравне с шириной и высотой: окно таверны переезжает между
+        // мониторами с разной плотностью, CSS-размер при этом не меняется, и буфер
+        // оставался бы старым — картинка мылится до первого ресайза сцены.
+        const dpr = window.devicePixelRatio || 1;
+        if (cssW !== lastW || cssH !== lastH || dpr !== lastDpr) {
             lastW = cssW;
             lastH = cssH;
-            const dpr = window.devicePixelRatio || 1;
+            lastDpr = dpr;
             canvas.width = Math.max(1, Math.round(cssW * dpr));
             canvas.height = Math.max(1, Math.round(cssH * dpr));
         }
@@ -217,18 +234,25 @@ export function createView(options = {}) {
 
         const player = state.player;
         const py = player.y - cameraY;
+        const gauge = (worldX) => {
+            if (player.boost) {
+                drawBoostGauge(
+                    worldX, player.boost, py, scale,
+                    player.boost.kind === 'rocket' ? rocketColor : propellerColor,
+                );
+            }
+        };
         drawPlayer(player.x, py, player.facing, scale, skin, skinColors);
+        gauge(player.x);
         // Wrap-копия у противоположного края: ядро (overlapsX) считает фигурку, свисающую
         // за правый край, стоящей и слева тоже — отрисовка обязана показывать то же
         // самое, иначе прыжок «из воздуха» выглядел бы багом.
         if (player.x + PLAYER_W > WORLD_W) {
             drawPlayer(player.x - WORLD_W, py, player.facing, scale, skin, skinColors);
+            gauge(player.x - WORLD_W);
         } else if (player.x < 0) {
             drawPlayer(player.x + WORLD_W, py, player.facing, scale, skin, skinColors);
-        }
-
-        if (player.boost) {
-            drawBoostGauge(player, py, scale, player.boost.kind === 'rocket' ? rocketColor : propellerColor);
+            gauge(player.x + WORLD_W);
         }
     }
 

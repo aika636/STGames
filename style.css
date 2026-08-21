@@ -1144,6 +1144,11 @@
 .doodlejump-view {
     width: 100%;
     height: 100%;
+    /* Спрайты у самого края (платформа под верхней кромкой, монета под нижней, обе
+       половинки фигурки при переносе через край мира) заходили на скруглённую рамку
+       поля. Подрезаем по контейнеру — рамка снова читается как рамка. */
+    overflow: hidden;
+    border-radius: 10px;
 }
 
 .doodlejump-canvas {
@@ -1218,6 +1223,25 @@
     min-width: 9em;
     min-height: 28px;
     white-space: nowrap;
+}
+
+/* Пауза — плашка поверх поля. Строки под кнопками мало: кадры паузы отличались от
+   игровых одной мелкой подписью внизу, и экран читался как идущая партия. Подложка
+   полупрозрачная (поле под ней видно — это часть смысла), но от --stg-solid: у
+   --stg-surface в режиме «Цвета таверны» своя альфа, и плашка растворилась бы. */
+.doodlejump-pause {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background-color: rgba(0, 0, 0, 0.45);
+    background-color: color-mix(in srgb, var(--stg-solid) 62%, transparent);
+    color: var(--stg-fg);
+    font-size: 1.4em;
+    letter-spacing: 0.08em;
+    pointer-events: none;
 }
 
 /* Кнопка магазина стоит под счётчиками, во всю ширину своей строки грида: мельче обычной

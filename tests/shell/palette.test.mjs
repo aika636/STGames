@@ -21,6 +21,11 @@ import { assert, assertEqual, report, test } from '../_harness.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const css = readFileSync(join(ROOT, 'style.css'), 'utf8');
+// Комментарии выкидываем до разбора: в файле их много, и в них попадаются имена
+// переменных с двоеточием («тот же тон, что и --stg-surface: …»). Наивный разбор
+// объявлений принимает такое за объявление и съедает вместе с ним следующее — тест
+// начинает ругаться на переменную, которая на месте.
+const cssCode = css.replace(/\/\*[\s\S]*?\*\//g, '');
 
 // Имена, которые JS читает через getComputedStyle и льёт в fillStyle/strokeStyle: их
 // видно по строковому литералу '--stg-…' в коде игры. Скины «Дудл Джампа» держат свои
@@ -42,12 +47,12 @@ const names = [...collectNames(join(ROOT, 'src', 'games'))].sort();
 // Три режима палитры — три блока объявлений. Ищем блок по селектору и режем до
 // закрывающей скобки: вложенных блоков внутри них нет.
 function block(selector) {
-    const at = css.indexOf(selector);
+    const at = cssCode.indexOf(selector);
     if (at < 0) return null;
-    const open = css.indexOf('{', at);
-    const close = css.indexOf('}', open);
+    const open = cssCode.indexOf('{', at);
+    const close = cssCode.indexOf('}', open);
     const declarations = new Map();
-    for (const m of css.slice(open + 1, close).matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
+    for (const m of cssCode.slice(open + 1, close).matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
         // Последнее объявление побеждает — как и в браузере (в файле есть пары
         // «фолбэк, затем color-mix»).
         declarations.set(m[1], m[2].trim());
@@ -98,5 +103,64 @@ for (const [mode, declarations] of MODES) {
         }
     });
 }
+
+// --- Непрозрачные подложки.
+//
+// Вторая грань того же слоя. В режиме theme --stg-surface и --stg-bg полупрозрачны по
+// замыслу (плашки поверх попапа ST должны просвечивать), и всё, что собрано из них через
+// color-mix, наследует их альфу: у экрана проигрыша «Дудл Джампа» она вышла 0.041 против
+// 0.82 в двух других режимах — оверлея фактически не было, платформы перечёркивали счёт,
+// а на светлой теме таверны сквозь поле читался чат. Подложка, которая обязана
+// перекрывать фон под собой, берёт --stg-solid.
+
+const BACKDROPS = [
+    '.doodlejump-stage',
+    '.doodlejump-over',
+    '.doodlejump-shop',
+];
+
+// Значение background-color правила: последнее объявление побеждает, как и в браузере.
+function backgroundOf(selector) {
+    const at = cssCode.indexOf(`\n${selector} {`);
+    if (at < 0) return null;
+    const open = cssCode.indexOf('{', at);
+    const close = cssCode.indexOf('}', open);
+    let value = null;
+    for (const m of cssCode.slice(open + 1, close).matchAll(/background-color\s*:\s*([^;]+);/g)) {
+        value = m[1].trim();
+    }
+    return value;
+}
+
+test('--stg-solid объявлен литералом во всех трёх режимах', () => {
+    for (const [mode, declarations] of MODES) {
+        const value = declarations.get('--stg-solid');
+        assert(value, `--stg-solid объявлен в режиме ${mode}`);
+        assert(
+            /^#[0-9a-f]{6}$/.test(value),
+            `--stg-solid в режиме ${mode} — ${value}: подложка обязана быть непрозрачным `
+            + 'литералом, иначе сквозь неё видно то, что она закрывает',
+        );
+    }
+});
+
+test('подложки не собираются из полупрозрачных --stg-surface/--stg-bg', () => {
+    for (const selector of BACKDROPS) {
+        const value = backgroundOf(selector);
+        assert(value, `у ${selector} задан background-color`);
+        for (const name of ['--stg-surface', '--stg-bg']) {
+            assertEqual(
+                value.includes(name),
+                false,
+                `${selector} красится через ${name} (${value}): в режиме theme эта `
+                + 'переменная полупрозрачна, и подложка перестаёт перекрывать фон',
+            );
+        }
+        assert(
+            value.includes('--stg-solid'),
+            `${selector} красится не от --stg-solid (${value})`,
+        );
+    }
+});
 
 report('палитра');

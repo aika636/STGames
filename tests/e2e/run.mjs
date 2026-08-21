@@ -6,6 +6,11 @@
 // в *.e2e.mjs и намеренно не попадают в тот прогон — им нужны и SillyTavern, и браузер.
 //
 //   STGAMES_ST_DIR=<каталог SillyTavern> node tests/e2e/run.mjs [фильтр] [--headed] [--fresh]
+//
+// --headed открывает настоящее окно браузера и по окончании прогона НЕ закрывает его,
+// пока не нажмёшь Enter: иначе окно пропадает ровно в тот момент, ради которого headed
+// и включали (особенно при падении — finally срабатывает сразу после catch).
+// --close-at-end отключает это ожидание, если headed нужен без ручного финала.
 
 import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -19,6 +24,7 @@ const DIR = fileURLToPath(new URL('.', import.meta.url));
 const argv = process.argv.slice(2);
 const headed = argv.includes('--headed');
 const fresh = argv.includes('--fresh');
+const keepOpen = headed && !argv.includes('--close-at-end');
 const filter = argv.find((arg) => !arg.startsWith('--'));
 const port = Number(process.env.STGAMES_E2E_PORT || 8123);
 
@@ -68,7 +74,22 @@ try {
     console.error(`\n✗ прогон не состоялся: ${err.message}`);
     process.exitCode = 1;
 } finally {
+    if (keepOpen && browser?.isConnected()) await waitForEnter();
     await session?.context.close().catch(() => {});
     await browser?.close().catch(() => {});
     tavern?.stop();
+}
+
+// Держим окно и таверну живыми, пока смотрим глазами. stdin в pipe (запуск из-под
+// обвязки без терминала) ждать нечего — просто выходим.
+function waitForEnter() {
+    if (!process.stdin.isTTY) return Promise.resolve();
+    console.log('\nОкно оставлено открытым — Enter, чтобы закрыть браузер и таверну.');
+    return new Promise((resolve) => {
+        process.stdin.resume();
+        process.stdin.once('data', () => {
+            process.stdin.pause();
+            resolve();
+        });
+    });
 }

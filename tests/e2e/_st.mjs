@@ -10,7 +10,7 @@
 // локальные пути не попадают.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, lstatSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, lstatSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +61,23 @@ function linkExtension(dataRoot) {
     return link;
 }
 
+// Каталог public/scripts/extensions/third-party грузится таверной независимо от
+// data-root, поэтому лежащая там копия STGames перебивает junction, который прогон
+// делает во временный data-root, — и тесты молча проверяют вчерашний код (это стоило
+// целого дня проверок, см. docs/plan-doodlejump-fixes.md §B.0). Падаем внятно.
+function assertNoRivalCopies(stDir) {
+    const dir = join(stDir, 'public', 'scripts', 'extensions', 'third-party');
+    if (!existsSync(dir)) return;
+    const rivals = readdirSync(dir).filter((name) => /^STGames/i.test(name) || /DoodleJump/i.test(name));
+    if (rivals.length === 0) return;
+    throw new Error(
+        `в таверне лежит своя копия расширения: ${rivals.map((n) => `third-party/${n}`).join(', ')}\n`
+        + 'Этот каталог грузится мимо data-root и перебивает ссылку на рабочее дерево — '
+        + 'прогон проверял бы не тот код.\n'
+        + 'Уберите или временно переименуйте эти каталоги и запустите прогон снова.',
+    );
+}
+
 /**
  * Запускает изолированный SillyTavern и ждёт готовности.
  * @param {{ port?: number, fresh?: boolean, dataRoot?: string }} options
@@ -68,6 +85,7 @@ function linkExtension(dataRoot) {
  */
 export async function startTavern({ port = DEFAULT_PORT, fresh = false, dataRoot } = {}) {
     const stDir = resolveTavernDir();
+    assertNoRivalCopies(stDir);
     const root = dataRoot ?? join(tmpdir(), 'stgames-e2e', 'data');
 
     // По умолчанию data-root переживает прогоны: на нём кэш сборки фронтенда, и

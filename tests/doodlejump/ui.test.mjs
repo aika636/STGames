@@ -133,6 +133,25 @@ function key(type, k) {
     return event;
 }
 
+// Ведение пальцем: jsdom не знает ни PointerEvent, ни раскладки. PointerEvent изображаем
+// MouseEvent'ом с дописанным pointerId (createDrag() читает только его и clientX), а
+// getBoundingClientRect подменяем — в jsdom он всегда нулевой, и без подмены масштаб
+// «CSS-пиксели → wu» выродился бы в ноль. Ширину берём ту же, что фолбэк view.js (320),
+// поэтому clientX в тестах живёт в той же системе координат, что и записанные заливки.
+function stubRect(canvas, width = 320) {
+    canvas.getBoundingClientRect = () => ({
+        left: 0, top: 0, right: width, bottom: 512, width, height: 512, x: 0, y: 0,
+    });
+    return canvas;
+}
+
+function pointer(canvas, type, clientX, id = 1) {
+    const event = new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, clientX });
+    Object.defineProperty(event, 'pointerId', { value: id });
+    canvas.dispatchEvent(event);
+    return event;
+}
+
 // Фигурку в записанных заливках узнаём по ширине: она PLAYER_W мировых единиц, а
 // платформы — заметно шире (66 у «нормально»). Масштаб в jsdom постоянный: клиентских
 // размеров нет, view.js берёт фолбэк 320 CSS-пикселей на WORLD_W.
@@ -289,6 +308,65 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         const settled = lastPlayerX();
         frames(8);
         assert(Math.abs(lastPlayerX() - settled) < 0.5, `после возврата фигурка стоит: ${settled} → ${lastPlayerX()}`);
+    });
+
+    // --- Ведение пальцем по полю (docs/plan-doodlejump-fixes.md §D).
+
+    test('палец на поле перебивает зажатую кнопку', () => {
+        ensureAlive(root);
+        const canvas = stubRect(root.querySelector('.doodlejump-canvas'));
+        const btn = root.querySelector('.doodlejump-btn-left');
+        btn.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        frames(6);
+
+        // Палец у правого края: цель далеко справа, значит полный ход вправо, несмотря на
+        // зажатую кнопку «влево».
+        pointer(canvas, 'pointerdown', 310);
+        frames(14);
+        const before = lastPlayerX();
+        frames(8);
+        assert(lastPlayerX() > before, `палец переспорил кнопку: ${before} → ${lastPlayerX()}`);
+    });
+
+    test('отпустили палец — вернулось направление зажатой кнопки', () => {
+        ensureAlive(root);
+        const canvas = stubRect(root.querySelector('.doodlejump-canvas'));
+        pointer(canvas, 'pointerup', 310);
+        frames(14);
+        const before = lastPlayerX();
+        frames(8);
+        assert(lastPlayerX() < before, `кнопка «влево» снова в силе: ${before} → ${lastPlayerX()}`);
+        root.querySelector('.doodlejump-btn-left')
+            .dispatchEvent(new dom.window.MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+        frames(12);
+    });
+
+    test('палец подводит фигурку к цели и отпускает газ, а не гонит на полную', () => {
+        ensureAlive(root);
+        const canvas = stubRect(root.querySelector('.doodlejump-canvas'));
+        // Цель — там, где фигурка стоит сейчас: намерение в мёртвой зоне, ход нулевой.
+        const here = lastPlayerX() + (PLAYER_W * SCALE) / 2;
+        // Заливки записаны в device-пикселях (wu·SCALE), а clientX живёт в CSS-пикселях
+        // подменённого rect шириной 320 — при фолбэке view.js это одно и то же число.
+        pointer(canvas, 'pointerdown', here);
+        frames(20);
+        const settled = lastPlayerX();
+        frames(10);
+        assert(Math.abs(lastPlayerX() - settled) < 1.5, `фигурка стоит у пальца: ${settled} → ${lastPlayerX()}`);
+        pointer(canvas, 'pointerup', 0);
+        frames(12);
+    });
+
+    test('pointercancel снимает намерение — фигурка не едет сама', () => {
+        ensureAlive(root);
+        const canvas = stubRect(root.querySelector('.doodlejump-canvas'));
+        pointer(canvas, 'pointerdown', 310);
+        frames(10);
+        pointer(canvas, 'pointercancel', 310);
+        frames(14);
+        const settled = lastPlayerX();
+        frames(8);
+        assert(Math.abs(lastPlayerX() - settled) < 0.5, `после отмены фигурка стоит: ${settled} → ${lastPlayerX()}`);
     });
 
     test('Esc не перехватывается, посторонняя клавиша проходит насквозь', () => {
@@ -531,6 +609,42 @@ await test('view красит типы платформ по-разному, р�
     const wholeTop = 280 * SCALE;
     assertEqual(lines.filter((l) => Math.abs(l.from.y - wholeTop) < 0.6).length, 0, 'у целой хрупкой трещин нет');
     view.destroy();
+});
+
+// --- createDrag напрямую: арифметика намерения и снятие слушателей.
+//
+// Через смонтированный экран это не проверить: destroy() уносит канвас из дерева вместе
+// со слушателями, и «слушателя больше нет» стало бы неотличимо от «элемента больше нет».
+
+test('createDrag: намерение — доля расстояния до пальца, а destroy снимает слушатели', async () => {
+    const { createDrag } = await import('../../src/games/doodlejump/ui/controls.js');
+    const canvas = stubRect(document.createElement('canvas'));
+    document.body.appendChild(canvas);
+
+    const seen = [];
+    let playerX = 180; // центр фигурки — 200 wu, ровно середина мира
+    const drag = createDrag({ canvas, getPlayerX: () => playerX, onInput: (dir) => seen.push(dir) });
+
+    // Палец в 30 wu правее центра фигурки: половина STEER_ZONE = половина хода.
+    // clientX = wu·(320/WORLD_W).
+    pointer(canvas, 'pointerdown', 230 * (320 / WORLD_W));
+    assertEqual(seen.length, 1, 'касание сразу задало намерение');
+    assert(Math.abs(seen[0] - 0.5) < 1e-6, `половина хода, а не полный: ${seen[0]}`);
+
+    // Палец не двигался, а фигурка приехала — намерение обязано пересчитаться само.
+    playerX = 210;
+    drag.update();
+    assert(Math.abs(seen[seen.length - 1]) < 1e-6, 'приехали к пальцу — ход нулевой');
+
+    pointer(canvas, 'pointerup', 230 * (320 / WORLD_W));
+    assertEqual(seen[seen.length - 1], null, 'палец отпущен — управление возвращено');
+
+    drag.destroy();
+    const before = seen.length;
+    pointer(canvas, 'pointerdown', 10);
+    pointer(canvas, 'pointermove', 300);
+    assertEqual(seen.length, before, 'после destroy события не слушаются');
+    canvas.remove();
 });
 
 // --- Снятие слушателей.

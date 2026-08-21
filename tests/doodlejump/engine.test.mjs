@@ -188,6 +188,39 @@ test('допуск по краю не превращает платформу в
     assertEqual(state.landings, 0, 'счётчик платформ не тронут');
 });
 
+// Аналоговое намерение (docs/plan-doodlejump-fixes.md §D.2): клавиатура и кнопки шлют ±1,
+// ведение пальцем — долю. Схлопывание в знак убило бы всю тонкую подводку.
+test('дробное намерение даёт долю максимальной скорости', () => {
+    const state = bareState();
+    setInput(state, 0.4);
+    assertClose(state.input.dir, 0.4, 1e-9, 'значение сохранено как есть');
+
+    // Разгон занимает ~0.15 с; 60 подшагов (0.5 с) — с запасом до целевой скорости.
+    for (let i = 0; i < 60; i++) stepOnce(state);
+    assertClose(state.player.vx, 0.4 * MOVE_SPEED, 1e-6, 'скорость — 40% от максимума');
+});
+
+test('намерение за пределами [-1, 1] кламплется', () => {
+    const state = bareState();
+    setInput(state, 5);
+    assertEqual(state.input.dir, 1, 'сверху');
+    setInput(state, -5);
+    assertEqual(state.input.dir, -1, 'снизу');
+});
+
+test('мусор в намерении гасится в ноль и не ломает партию', () => {
+    const state = bareState();
+    setInput(state, 1);
+    setInput(state, NaN);
+    assertEqual(state.input.dir, 0, 'NaN — это ноль');
+    setInput(state, undefined);
+    assertEqual(state.input.dir, 0, 'undefined — тоже');
+
+    stepOnce(state);
+    assert(Number.isFinite(state.player.x), 'координата осталась числом');
+    assert(Number.isFinite(state.player.vx), 'скорость осталась числом');
+});
+
 test('wrap по горизонтали в обе стороны', () => {
     const left = bareState();
     left.player.x = 1;

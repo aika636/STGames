@@ -1,5 +1,5 @@
 // Управление «Дудл Джампом»: клавиатура (capture-фаза на document, пока смонтирован
-// экран) и экранные кнопки влево/вправо.
+// экран), экранные кнопки влево/вправо и ведение пальцем по полю.
 //
 // Отличие от змейки: ввод не дискретный ход, а непрерывное намерение — клавиша держится,
 // фигурка едет. Поэтому нужны и keydown, и keyup, а направление выводится из ДВУХ флагов
@@ -10,6 +10,8 @@
 //
 // Гасятся только обработанные клавиши, Esc не трогаем: его получает попап и закрывает
 // окно целиком.
+
+import { PLAYER_W, WORLD_W } from '../core/engine.js';
 
 const LEFT_KEYS = new Set(['ArrowLeft', 'a', 'A', 'ф', 'Ф']);
 const RIGHT_KEYS = new Set(['ArrowRight', 'd', 'D', 'в', 'В']);
@@ -176,6 +178,98 @@ export function createButtons({ onInput }) {
             rightDown = false;
             bag.off();
             root.remove();
+        },
+    };
+}
+
+// Ведение пальцем по полю — аналоговый ввод там, где кнопки дают только «на полную».
+// Модель: палец говорит, ГДЕ должна быть фигурка. Она внизу-по-центру, палец естественно
+// ложится ниже неё и её не закрывает, поэтому «где палец — туда и фигурка» читается без
+// обучения; свайп-дельта такого не даёт.
+//
+// Намерение = доля расстояния до цели: далеко — полный ход, рядом — плавное подведение и
+// остановка. Пересчитывается КАЖДЫЙ кадр через update(), а не только по pointermove:
+// фигурка едет, палец стоит — расстояние меняется само, и без пересчёта она проскочила бы
+// цель.
+//
+// touch-action: none на .doodlejump-canvas уже стоит, так что страница под пальцем
+// не поедет.
+
+// Полный ход дальше этого расстояния до цели, wu.
+const STEER_ZONE = 60;
+// Ближе этого фигурка считается приехавшей: иначе она дрожала бы под пальцем.
+const STEER_DEAD_ZONE = 2;
+
+export function createDrag({ canvas, getPlayerX, onInput }) {
+    const bag = listenerBag();
+    let pointerId = null;
+    let clientX = 0;
+
+    function intent() {
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width) return 0;
+        const desired = (clientX - rect.left) * (WORLD_W / rect.width);
+        const delta = desired - (getPlayerX() + PLAYER_W / 2);
+        if (Math.abs(delta) <= STEER_DEAD_ZONE) return 0;
+        return Math.max(-1, Math.min(1, delta / STEER_ZONE));
+    }
+
+    // Пока палец на поле, он задаёт намерение целиком; отпустили — null, и экран
+    // возвращается к сумме клавиатуры и кнопок.
+    function emit() {
+        onInput(pointerId === null ? null : intent());
+    }
+
+    function onPointerDown(e) {
+        if (pointerId !== null) return; // второй палец не перехватывает управление
+        pointerId = e.pointerId;
+        clientX = e.clientX;
+        e.preventDefault();
+        // Захват — удобство (палец может уехать за край поля), а не необходимость:
+        // в jsdom и на мыши его может не быть вовсе.
+        try { canvas.setPointerCapture?.(e.pointerId); } catch { /* не судьба */ }
+        emit();
+    }
+
+    function onPointerMove(e) {
+        if (e.pointerId !== pointerId) return;
+        clientX = e.clientX;
+        e.preventDefault();
+        emit();
+    }
+
+    // pointercancel прилетает от звонка, шторки и жеста системы — молча оставить
+    // намерение висеть нельзя, иначе фигурка поедет сама.
+    function onPointerUp(e) {
+        if (e.pointerId !== pointerId) return;
+        pointerId = null;
+        try { canvas.releasePointerCapture?.(e.pointerId); } catch { /* уже отпущен */ }
+        emit();
+    }
+
+    bag.on(canvas, 'pointerdown', onPointerDown);
+    bag.on(canvas, 'pointermove', onPointerMove);
+    bag.on(canvas, 'pointerup', onPointerUp);
+    bag.on(canvas, 'pointercancel', onPointerUp);
+
+    return {
+        // Зовётся каждый кадр: цель не двигалась, а фигурка — да.
+        update() {
+            if (pointerId !== null) emit();
+        },
+        isActive() {
+            return pointerId !== null;
+        },
+        // Симметрично клавиатуре и кнопкам: уход со вкладки с прижатым пальцем
+        // pointerup не даёт.
+        release() {
+            if (pointerId === null) return;
+            pointerId = null;
+            emit();
+        },
+        destroy() {
+            pointerId = null;
+            bag.off();
         },
     };
 }

@@ -14,7 +14,7 @@ import { readStats, recordPlayed, recordResult, resetStats } from './core/stats.
 import { logError } from '../../log.js';
 import { checkbox, row, select } from '../../shell/settings-ui.js';
 import { createView } from './ui/view.js';
-import { attachKeyboard, createButtons } from './ui/controls.js';
+import { attachKeyboard, createButtons, createDrag } from './ui/controls.js';
 
 const DEFAULTS = Object.freeze({
     stats: {},
@@ -158,10 +158,16 @@ function createDoodleJumpScreen(root, api) {
 
     // Клавиатура и кнопки держат СВОИ флаги и сообщают свой вклад по отдельности —
     // складываем их здесь, чтобы отпускание кнопки не сбрасывало зажатую клавишу.
+    //
+    // Ведение пальцем в эту сумму не входит: его значение дробное, и Math.sign() схлопнул
+    // бы всю аналоговость обратно в ±1. Правило — побеждает последний активный источник:
+    // палец на поле задаёт намерение целиком (dragDir — число), отпустили (null) —
+    // вернулась сумма клавиатуры и кнопок.
     let keyDir = 0;
     let btnDir = 0;
+    let dragDir = null;
     function applyInput() {
-        const dir = Math.sign(keyDir + btnDir);
+        const dir = dragDir === null ? Math.sign(keyDir + btnDir) : dragDir;
         if (state) setInput(state, dir);
     }
 
@@ -172,6 +178,15 @@ function createDoodleJumpScreen(root, api) {
         },
     });
     root.appendChild(buttons.root);
+
+    const drag = createDrag({
+        canvas: view.canvas,
+        getPlayerX: () => state.player.x,
+        onInput: (dir) => {
+            dragDir = dir;
+            applyInput();
+        },
+    });
 
     const status = document.createElement('div');
     status.className = 'doodlejump-status';
@@ -280,6 +295,10 @@ function createDoodleJumpScreen(root, api) {
         const dt = now - lastFrame;
         lastFrame = now;
 
+        // Палец мог не двигаться, а фигурка — да: намерение считается от расстояния между
+        // ними, значит его надо пересчитать до физики, а не только по pointermove.
+        drag.update();
+
         if (!paused() && state.alive) {
             // Сложность и движущиеся платформы — живые настройки: генератор перечитывает
             // их на каждом достраивании поля, так что переключатель в панели действует на
@@ -335,6 +354,7 @@ function createDoodleJumpScreen(root, api) {
         // keyup зажатой клавиши после ухода со вкладки не придёт — снимаем флаги сами.
         keyboard.release();
         buttons.release();
+        drag.release();
         updateStatus();
     }
     function onFocus() {
@@ -373,6 +393,7 @@ function createDoodleJumpScreen(root, api) {
             if (rafId) cancelAnimationFrame(rafId);
             keyboard.destroy();
             buttons.destroy();
+            drag.destroy();
             document.removeEventListener('visibilitychange', onVisibility);
             window.removeEventListener('blur', onBlur);
             window.removeEventListener('focus', onFocus);

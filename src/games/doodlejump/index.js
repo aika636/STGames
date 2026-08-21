@@ -8,7 +8,8 @@
 // статистика и настройки.
 
 import {
-    advance, createGame, DEFAULT_DIFFICULTY, DIFFICULTY, setDifficulty, setInput, setMovingPlatforms,
+    advance, createGame, DEFAULT_DIFFICULTY, DIFFICULTY, setBoosters, setDifficulty, setInput,
+    setMovingPlatforms,
 } from './core/engine.js';
 import { readStats, recordPlayed, recordResult, resetStats } from './core/stats.js';
 import { logError } from '../../log.js';
@@ -20,6 +21,7 @@ const DEFAULTS = Object.freeze({
     stats: {},
     difficulty: DEFAULT_DIFFICULTY,
     movingPlatforms: true,
+    boosters: true,
     showButtons: true,
 });
 
@@ -74,6 +76,16 @@ export default {
 
         // Кнопки — единственная чисто визуальная настройка: сама собой открытый экран её
         // не заметит, поэтому пинаем окно через onSettingsChanged → refresh().
+        container.appendChild(checkbox(
+            'doodlejump_boosters',
+            'Бустеры (пропеллер и ракета)',
+            settings.boosters !== false,
+            (checked) => {
+                settings.boosters = checked;
+                api.save();
+            },
+        ));
+
         container.appendChild(checkbox(
             'doodlejump_show_buttons',
             'Экранные кнопки влево/вправо',
@@ -207,6 +219,7 @@ function createDoodleJumpScreen(root, api) {
             rng: Math.random,
             difficulty: settings.difficulty,
             movingPlatforms: settings.movingPlatforms !== false,
+            boosters: settings.boosters !== false,
         });
     }
 
@@ -305,6 +318,7 @@ function createDoodleJumpScreen(root, api) {
             // идущую партию, а не со следующей.
             setDifficulty(state, settings.difficulty);
             setMovingPlatforms(state, settings.movingPlatforms !== false);
+            setBoosters(state, settings.boosters !== false);
             const res = advance(state, dt);
             if (res.fell) {
                 showOver();

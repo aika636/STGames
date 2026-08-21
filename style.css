@@ -239,8 +239,9 @@
  *   --stg-snake-*        цвета канваса змейки — только литералы и var(), без color-mix:
  *                        их читает JS через getComputedStyle, а color-mix в значении
  *                        пользовательского свойства до JS доезжает неразобранным.
- *   --stg-doodlejump-*   цвета канваса «Дудл Джампа» (фигурка, её глаза, типы платформ) —
- *                        то же ограничение, что у --stg-snake-*: только литералы и var().
+ *   --stg-doodlejump-*   цвета канваса «Дудл Джампа» (фигурка, её глаза, типы платформ,
+ *                        бустеры) — то же ограничение, что у --stg-snake-*: только
+ *                        литералы и var().
  *
  * Значения по умолчанию — режим theme: ровно то, что было до появления палитры.
  */
@@ -280,6 +281,8 @@
     --stg-doodlejump-platform-moving: #7fae5a;
     --stg-doodlejump-platform-crumbling: #b58a4a;
     --stg-doodlejump-spring: #e0c34d;
+    --stg-doodlejump-propeller: #7bc6c6;
+    --stg-doodlejump-rocket: #d1603d;
 }
 
 /* Тёмная палитра. Не «тема ST потемнее», а свой набор: фон окна чуть светлее чёрного,
@@ -311,6 +314,8 @@
     --stg-doodlejump-platform-moving: #7fae5a;
     --stg-doodlejump-platform-crumbling: #b58a4a;
     --stg-doodlejump-spring: #e0c34d;
+    --stg-doodlejump-propeller: #7bc6c6;
+    --stg-doodlejump-rocket: #d1603d;
 }
 
 /* Светлая палитра. Поле белое, а подложка окна — тёплый серый: белое поле на белом окне
@@ -341,6 +346,8 @@
     --stg-doodlejump-platform-moving: #4f7c34;
     --stg-doodlejump-platform-crumbling: #8a6528;
     --stg-doodlejump-spring: #b08f14;
+    --stg-doodlejump-propeller: #2f7d7d;
+    --stg-doodlejump-rocket: #a83c1c;
 }
 
 /* Своя палитра — своя подложка: без неё шапка окна и подписи остались бы цветом темы ST

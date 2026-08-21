@@ -721,6 +721,13 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         assert(previews.length > 0, 'у превью просили контекст');
         assert(previews.every((r) => r.attached), 'и каждый раз канвас уже висел в дереве экрана');
 
+        // Поле на время витрины убирается: она полупрозрачная, и платформы рябили сквозь
+        // плитки — игрок это и заметил на живом устройстве.
+        assert(
+            root.querySelector('.doodlejump-stage').classList.contains('is-shopping'),
+            'поле спрятано, пока открыта витрина',
+        );
+
         frames(10);
         assertClose2(lastPlayerX(), before, 0.001, 'пока магазин открыт, фигурка стоит');
     });
@@ -808,6 +815,10 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         assertEqual(root.querySelector('.doodlejump-status').textContent, '', 'паузы больше нет');
         // Заезд идёт — значит и возвращать нечего: экран проигрыша из витрины не всплывает.
         assertEqual(root.querySelector('.doodlejump-over').style.display, 'none', 'итога заезда нет');
+        assert(
+            !root.querySelector('.doodlejump-stage').classList.contains('is-shopping'),
+            'поле вернулось',
+        );
 
         frame();
         const before = lastPlayerX();

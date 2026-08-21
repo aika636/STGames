@@ -1185,6 +1185,12 @@
     color: var(--stg-fg);
 }
 
+/* Пока открыта витрина, поле убирается совсем: витрина полупрозрачная (в режиме «Цвета
+   таверны» палитра сквозная осознанно), и платформы с фигуркой рябили сквозь плитки. */
+.doodlejump-stage.is-shopping .doodlejump-view {
+    display: none;
+}
+
 .doodlejump-shop-content {
     display: flex;
     flex-direction: column;

@@ -445,6 +445,10 @@ function createDoodleJumpScreen(root, api) {
         // из четырёх режимов оформления.
         overBeforeShop = overlay.style.display !== 'none';
         overlay.style.display = 'none';
+        // По той же причине убирается и поле: витрина полупрозрачная, и платформы с
+        // фигуркой рябили сквозь плитки. Прятать канвас, а не подкладывать под витрину
+        // непрозрачный фон, — единственный способ, не зависящий от режима оформления.
+        stage.classList.add('is-shopping');
         shop.style.display = 'flex';
         renderShop();
         updateStatus();
@@ -454,6 +458,7 @@ function createDoodleJumpScreen(root, api) {
         if (!shopOpen()) return;
         shop.style.display = 'none';
         shop.innerHTML = '';
+        stage.classList.remove('is-shopping');
         // Итог заезда возвращается ровно таким, каким был: разметку оверлея витрина не
         // трогала, показать его достаточно обратно.
         if (overBeforeShop) overlay.style.display = 'flex';

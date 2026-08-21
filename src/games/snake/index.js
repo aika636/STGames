@@ -290,6 +290,13 @@ function createSnakeScreen(root, api) {
 
     return {
         destroy() {
+            // Брошенная партия записывает результат: «сыграно» выросло на старте, и
+            // оставить её без счёта значит потерять данные — партия числится сыгранной,
+            // но рекорда за ней нет. Партия змейки не сохраняется by design, так что
+            // «доиграю потом» тут не бывает. От двойной записи защищает overRecorded.
+            // То же решение и по той же причине — у «Дудл Джампа»
+            // (docs/plan-doodlejump-fixes.md §M).
+            record();
             if (rafId) cancelAnimationFrame(rafId);
             keyboard.destroy();
             swipe.destroy();

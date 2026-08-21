@@ -31,6 +31,13 @@ const DEFAULTS = Object.freeze({
     showButtons: true,
 });
 
+// Сколько кадров подряд имеет право упасть, прежде чем экран сдаётся. Один сбойный кадр —
+// это ещё не поломка: он может прийтись на промежуточное состояние (пересчёт размеров при
+// повороте телефона, пропавший 2d-контекст на переключении вкладок). Пять подряд — уже
+// система, и продолжать значит крутить rAF вхолостую, заваливая консоль.
+const FRAME_ERROR_LIMIT = 5;
+const CRASH_STATUS = 'Игра остановлена из-за ошибки. Нажмите Enter, чтобы начать заново.';
+
 // Подписи к ключам DIFFICULTY из движка: список уровней берётся оттуда, чтобы новый
 // уровень не пришлось дублировать в двух местах.
 const DIFFICULTY_LABELS = Object.freeze({
@@ -248,6 +255,9 @@ function createDoodleJumpScreen(root, api) {
     let overRecorded = false;
     let cashedOut = false;
     let destroyed = false;
+    // Подряд идущие сбойные кадры и «заезд остановлен ошибкой». См. onFrame().
+    let frameErrors = 0;
+    let crashed = false;
 
     const paused = () => manualPaused || autoPaused;
 
@@ -275,7 +285,9 @@ function createDoodleJumpScreen(root, api) {
     }
 
     function updateStatus() {
-        if (shopOpen()) {
+        if (crashed) {
+            status.textContent = CRASH_STATUS;
+        } else if (shopOpen()) {
             status.textContent = 'Магазин — партия на паузе';
         } else if (!state.alive) {
             status.textContent = 'Падение. Нажмите Enter для новой игры.';
@@ -516,6 +528,15 @@ function createDoodleJumpScreen(root, api) {
     }
 
     function restart() {
+        // Цикл после crash() стоит — заводим его первым делом и ровно один раз. Первым,
+        // потому что дальше по рестарту есть отрисовка, а она — один из подозреваемых:
+        // упади она снова, кадровый цикл уже крутится и снова покажет это словами, вместо
+        // того чтобы оставить экран немым.
+        if (crashed) {
+            crashed = false;
+            frameErrors = 0;
+            rafId = requestAnimationFrame(onFrame);
+        }
         // Новый заезд с открытой витриной — бессмыслица: закрываем её, а не оставляем
         // висеть поверх свежей партии.
         closeShop();
@@ -543,10 +564,30 @@ function createDoodleJumpScreen(root, api) {
         view.draw(state);
     }
 
-    function onFrame(now) {
-        // Правило 7 контракта: кадр, уже стоящий в очереди, обязан проверить, жив ли
-        // экран, — cancelAnimationFrame его не догонит.
-        if (destroyed) return;
+    // Видимая остановка вместо немого замирания. Экран, на котором ничего не происходит и
+    // ничего не написано, игрок читает как «зависло» — и идёт писать баг-репорт про
+    // зависание, а не про ошибку. Поэтому сдавшийся цикл обязан сказать это словами.
+    function crash() {
+        crashed = true;
+        // Собранное за заезд не пропадает: монеты игрок собрал, ошибка не его вина.
+        cashOut();
+        overlay.style.display = 'flex';
+        const content = overlay.querySelector('.doodlejump-over-content');
+        content.innerHTML = '<div>Что-то сломалось</div>'
+            + `<div>Высота ${state.score}</div>`
+            + '<button class="doodlejump-over-restart menu_button">Ещё раз</button>';
+        const restartBtn = content.querySelector('.doodlejump-over-restart');
+        restartBtn?.addEventListener('click', () => {
+            restartBtn.blur();
+            restart();
+        });
+        updateStatus();
+    }
+
+    // Кадр целиком: физика, шапка, отрисовка. Отделён от onFrame(), чтобы планирование
+    // следующего кадра жило СНАРУЖИ try/catch — иначе исключение внутри кадра уносило бы с
+    // собой и планирование, то есть убивало бы игру навсегда и молча (ровно так и было).
+    function runFrame(now) {
         if (lastFrame === null) lastFrame = now;
         const dt = now - lastFrame;
         lastFrame = now;
@@ -572,6 +613,32 @@ function createDoodleJumpScreen(root, api) {
         updateHeader();
         updateStatus();
         view.draw(state);
+    }
+
+    function onFrame(now) {
+        // Правило 7 контракта: кадр, уже стоящий в очереди, обязан проверить, жив ли
+        // экран, — cancelAnimationFrame его не догонит. То же и для остановки по ошибке:
+        // кадр из очереди не должен воскрешать цикл, который уже сдался.
+        if (destroyed || crashed) return;
+        try {
+            runFrame(now);
+            // Кадр прошёл целиком — серия оборвалась. Считаем именно ПОДРЯД идущие сбои:
+            // одиночная осечка раз в минуту игре не мешает, а копящийся счётчик рано или
+            // поздно остановил бы исправный заезд.
+            frameErrors = 0;
+        } catch (err) {
+            frameErrors += 1;
+            // Логируем каждый сбой серии, но серия ограничена FRAME_ERROR_LIMIT — потока в
+            // консоль по кадру на каждый rAF не будет.
+            logError(`ошибка в кадре дудл джампа (подряд ${frameErrors})`, err);
+            if (frameErrors >= FRAME_ERROR_LIMIT) {
+                crash();
+                return;
+            }
+            // Часы кадра сбрасываем: время, пока разбирались с ошибкой, накопилось бы в
+            // dt и следующий кадр прыгнул бы вслепую на восемь подшагов.
+            lastFrame = null;
+        }
         rafId = requestAnimationFrame(onFrame);
     }
 
@@ -588,7 +655,9 @@ function createDoodleJumpScreen(root, api) {
             updateStatus();
         },
         onRestart: () => {
-            if (!state.alive && !shopOpen()) restart();
+            // После остановки по ошибке Enter — единственный выход, поэтому он работает
+            // независимо от того, жива ли партия.
+            if ((crashed || !state.alive) && !shopOpen()) restart();
         },
     });
 

@@ -1093,6 +1093,74 @@ await test('view рисует бустеры разными силуэтами, 
     view.destroy();
 });
 
+// --- Fail soft: ошибка внутри кадра не убивает цикл.
+//
+// Раньше onFrame() планировал следующий кадр последней строкой, и любое исключение внутри
+// кадра уносило планирование с собой: экран замирал в последнем нарисованном состоянии,
+// строка статуса оставалась пустой, тапы ничего не делали. Со стороны это неотличимо от
+// зависшей вкладки — именно так этот баг и искали.
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    const status = root.querySelector('.doodlejump-status');
+    const overlay = root.querySelector('.doodlejump-over');
+    // Ломаем отрисовку: clearRect — первое, что делает view.draw().
+    const goodClear = mock2d.clearRect;
+    let breakFrames = 0;
+    mock2d.clearRect = function brokenClear() {
+        if (breakFrames > 0) {
+            breakFrames -= 1;
+            throw new Error('тестовый сбой отрисовки');
+        }
+        return goodClear.call(this);
+    };
+    // Ошибки кадра обязаны попадать в консоль с префиксом [STGames], а не молчать.
+    const errors = [];
+    const realError = console.error;
+    console.error = (...args) => { errors.push(args.map(String).join(' ')); };
+
+    test('одиночный сбойный кадр логируется, а цикл продолжается', () => {
+        frame();
+        const queued = rafCallbacks.length;
+        breakFrames = 1;
+        frame();
+        assertEqual(errors.length, 1, 'ошибка залогирована ровно один раз');
+        assert(errors[0].startsWith('[STGames]'), `префикс лога: ${errors[0]}`);
+        assertEqual(rafCallbacks.length, queued + 1, 'следующий кадр запланирован');
+        const pass = mock2d.pass;
+        frame();
+        assert(mock2d.pass > pass, 'и этот кадр нарисовался — цикл жив');
+        assertEqual(status.textContent, '', 'одна осечка ничего игроку не сообщает');
+    });
+
+    test('серия сбоев останавливает игру видимо, а не немым замиранием', () => {
+        errors.length = 0;
+        breakFrames = 20; // с запасом: важно, что цикл сдаётся сам на пятом
+        frames(6);
+        assertEqual(errors.length, 5, 'логов ровно по лимиту серии — потока в консоль нет');
+        assertEqual(overlay.style.display, 'flex', 'игроку показан экран остановки');
+        assert(overlay.textContent.includes('Что-то сломалось'), 'и сказано, что случилось');
+        assert(status.textContent.includes('ошибки'), `статус про ошибку: ${status.textContent}`);
+        const queued = rafCallbacks.length;
+        frames(3);
+        assertEqual(rafCallbacks.length, queued, 'новые кадры не планируются');
+    });
+
+    test('Enter после остановки поднимает цикл обратно', () => {
+        breakFrames = 0;
+        errors.length = 0;
+        key('keydown', 'Enter');
+        assertEqual(overlay.style.display, 'none', 'экран остановки убран');
+        const pass = mock2d.pass;
+        frames(3);
+        assert(mock2d.pass > pass, 'кадры снова идут');
+        assertEqual(status.textContent, '', 'статус чист — партия идёт');
+        assertEqual(errors.length, 0, 'и без новых ошибок');
+    });
+
+    console.error = realError;
+    mock2d.clearRect = goodClear;
+});
+
 // --- createDrag напрямую: арифметика намерения и снятие слушателей.
 //
 // Через смонтированный экран это не проверить: destroy() уносит канвас из дерева вместе

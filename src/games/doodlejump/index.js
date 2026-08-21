@@ -12,6 +12,7 @@ import {
     setMovingPlatforms,
 } from './core/engine.js';
 import { readStats, recordPlayed, recordResult, resetStats } from './core/stats.js';
+import { addCoins, readWallet } from './core/wallet.js';
 import { logError } from '../../log.js';
 import { checkbox, row, select } from '../../shell/settings-ui.js';
 import { createView } from './ui/view.js';
@@ -19,6 +20,10 @@ import { attachKeyboard, createButtons, createDrag } from './ui/controls.js';
 
 const DEFAULTS = Object.freeze({
     stats: {},
+    // Кошелёк и скины — рядом со stats, а не внутри: кнопка «Сбросить» в панели обнуляет
+    // статистику, и заработанное она трогать не должна (docs/plan-doodlejump-fixes.md §G.1).
+    wallet: { coins: 0 },
+    skins: { owned: ['default'], current: 'default' },
     difficulty: DEFAULT_DIFFICULTY,
     movingPlatforms: true,
     boosters: true,
@@ -116,7 +121,11 @@ export default {
         bestScore.textContent = `Лучшая высота: ${stats.bestScore}`;
         const bestPlatforms = document.createElement('div');
         bestPlatforms.textContent = `Лучший забег по платформам: ${stats.bestPlatforms}`;
-        container.append(played, bestScore, bestPlatforms);
+        // Кошелёк живёт рядом со статистикой, но не внутри неё: «Сбросить» ниже чистит
+        // только stats, монеты остаются.
+        const coins = document.createElement('div');
+        coins.textContent = `Монет в кошельке: ${readWallet(api.settings).coins}`;
+        container.append(played, bestScore, bestPlatforms, coins);
 
         if (stats.played || stats.bestScore || stats.bestPlatforms) {
             const btn = document.createElement('button');
@@ -146,9 +155,11 @@ function createDoodleJumpScreen(root, api) {
     header.className = 'doodlejump-header';
     const scoreEl = document.createElement('span');
     const platformsEl = document.createElement('span');
+    const coinsEl = document.createElement('span');
     const bestEl = document.createElement('span');
     header.appendChild(scoreEl);
     header.appendChild(platformsEl);
+    header.appendChild(coinsEl);
     header.appendChild(bestEl);
     root.appendChild(header);
 
@@ -210,6 +221,7 @@ function createDoodleJumpScreen(root, api) {
     let lastFrame = null;
     let rafId = null;
     let overRecorded = false;
+    let cashedOut = false;
     let destroyed = false;
 
     const paused = () => manualPaused || autoPaused;
@@ -231,6 +243,9 @@ function createDoodleJumpScreen(root, api) {
         const best = readStats(settings.stats);
         scoreEl.textContent = `Высота: ${state.score}`;
         platformsEl.textContent = `Платформ: ${state.landings}`;
+        // За заезд, а не всего: кошелёк — это накопленное, и путать одно с другим в
+        // шапке нельзя. Итог заезда уезжает в кошелёк в cashOut().
+        coinsEl.textContent = `Монеты: ${state.coins}`;
         bestEl.textContent = `Рекорд: ${best.bestScore}`;
     }
 
@@ -266,9 +281,30 @@ function createDoodleJumpScreen(root, api) {
     // Запись результата — строго один раз за заезд: rAF после падения продолжает крутиться
     // (оверлей и рестарт живут в том же цикле), и без флага статистика писалась бы каждый
     // кадр.
+    // Монеты заезда уезжают в кошелёк строго один раз — как и запись результата, и по той
+    // же причине: rAF после падения продолжает крутиться.
+    //
+    // Брошенный заезд (закрыли окно, ушли в хаб) монеты ЗАСЧИТЫВАЕТ: игрок их собрал, и
+    // отбирать собранное за то, что окно закрыли, — наказание на ровном месте. Обратное
+    // решение к тому же поощряло бы досиживать до падения ради валюты. Поэтому cashOut()
+    // зовётся и из record(), и из destroy(), а флаг не даёт заплатить дважды.
+    function cashOut() {
+        if (cashedOut) return;
+        cashedOut = true;
+        if (!state.coins) return;
+        try {
+            addCoins(settings, state.coins);
+            api.save();
+            api.renderAllStats?.();
+        } catch (err) {
+            logError('не удалось записать монеты дудл джампа', err);
+        }
+    }
+
     function record() {
         if (overRecorded) return;
         overRecorded = true;
+        cashOut();
         try {
             const result = recordResult(settings.stats, { score: state.score, platforms: state.landings });
             api.save();
@@ -280,6 +316,10 @@ function createDoodleJumpScreen(root, api) {
     }
 
     function restart() {
+        // На всякий случай и здесь: после падения монеты уже в кошельке (record()), но
+        // рестарт не должен быть способом потерять собранное ни при каком порядке событий.
+        cashOut();
+        cashedOut = false;
         state = newGame();
         applyInput();
         manualPaused = false;
@@ -404,6 +444,7 @@ function createDoodleJumpScreen(root, api) {
         destroy() {
             if (destroyed) return;
             destroyed = true;
+            cashOut();
             if (rafId) cancelAnimationFrame(rafId);
             keyboard.destroy();
             buttons.destroy();

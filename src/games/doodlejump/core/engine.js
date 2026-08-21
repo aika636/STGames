@@ -87,6 +87,17 @@ export const PICKUP_H = 26;
 // Ракета реже пропеллера: она сильнее, и встречать её через раз было бы скучно.
 export const ROCKET_SHARE = 0.35;
 
+// --- Монеты -----------------------------------------------------------------------
+
+// Монета живёт в том же state.pickups, что и бустеры, отдельным kind: 'coin'. Свой массив
+// продублировал бы всё, что у них общего, — коробка PICKUP_W×PICKUP_H, свип-подбор в любом
+// направлении движения, флаг taken и вычищение ушедшего под нижний край, — ради
+// единственного отличия: монета не трогает физику, а только считается. Развилка «монета
+// или бустер» стоит ровно в двух местах (подбор и отрисовка), и это дешевле дубля.
+//
+// Монета ничего не даёт партии: она копится в кошельке между заездами (core/wallet.js) и
+// тратится в магазине скинов. Поэтому счёт, физика и генератор о ней ничего не знают.
+
 // --- Сложность --------------------------------------------------------------------
 
 // Сложность правит только генератор (зазор, ширина, доли типов платформ), а не геометрию
@@ -96,22 +107,27 @@ export const ROCKET_SHARE = 0.35;
 // movingChance/crumblingChance/springChance — доли одного и того же броска, поэтому их
 // сумма обязана оставаться заметно меньше единицы: остаток — это обычные платформы.
 // boostChance стоит особняком: это отдельный бросок на «положить ли бустер на обычную
-// платформу этажа», с другими типами он не конкурирует.
+// платформу этажа», с другими типами он не конкурирует. coinChance — такой же отдельный
+// бросок для монеты, и он ниже по сложности: на «сложной» этажей за заезд меньше, но и
+// заезд короче, а валюта должна копиться примерно с одной скоростью на всех уровнях.
 export const DIFFICULTY = Object.freeze({
     easy: Object.freeze({
         gapMin: 0.30, gapMax: 0.58, width: 82,
         movingChance: 0.06, movingMin: 40, movingMax: 70,
         crumblingChance: 0.05, springChance: 0.04, boostChance: 0.05,
+        coinChance: 0.26,
     }),
     normal: Object.freeze({
         gapMin: 0.44, gapMax: 0.78, width: 66,
         movingChance: 0.16, movingMin: 55, movingMax: 95,
         crumblingChance: 0.14, springChance: 0.07, boostChance: 0.045,
+        coinChance: 0.30,
     }),
     hard: Object.freeze({
         gapMin: 0.58, gapMax: 0.94, width: 52,
         movingChance: 0.30, movingMin: 75, movingMax: 115,
         crumblingChance: 0.26, springChance: 0.10, boostChance: 0.04,
+        coinChance: 0.34,
     }),
 });
 
@@ -149,13 +165,16 @@ export function createGame({
             boost: null,
         },
         platforms: [],
-        // Бустеры — свой массив, а не платформы: у них другая геометрия и другое
-        // поведение при столкновении (подбираются в любом направлении движения, а не
-        // только при падении сверху).
+        // Предметы (бустеры и монеты) — свой массив, а не платформы: у них другая
+        // геометрия и другое поведение при столкновении (подбираются в любом направлении
+        // движения, а не только при падении сверху).
         pickups: [],
         cameraY: 0,
         score: 0,
         landings: 0,
+        // Монеты за ЭТОТ заезд. В кошелёк (settings.wallet) они уезжают одним разом в
+        // конце заезда — это забота ui/, ядро о настройках не знает.
+        coins: 0,
         alive: true,
         difficulty,
         movingPlatforms,
@@ -296,10 +315,30 @@ export function ensurePlatformsAbove(state, targetY) {
         // построению — приземлился на эту платформу, значит подобрал. Движущаяся не
         // годится (предмет за ней не поедет), пружина и так подбрасывает, а на
         // рассыпающейся бустер пропадал бы вместе с ней.
+        let boostHere = false;
         if (state.boosters && anchor.kind === 'normal' && rng() < rules.boostChance) {
+            boostHere = true;
             state.pickups.push({
                 id: state.nextId++,
                 kind: rng() < ROCKET_SHARE ? 'rocket' : 'propeller',
+                x: anchor.x + (anchor.w - PICKUP_W) / 2,
+                y: anchor.y - PICKUP_H - 2,
+                w: PICKUP_W,
+            });
+        }
+
+        // Монета — туда же, на опору этажа: рядом с платформой она собираема по пути, а
+        // не висит в пустоте, куда ещё надо ухитриться попасть. Пружина занята зигзагом
+        // (монета накрыла бы его и соврала бы про тип платформы), бустер — своим
+        // предметом: два предмета на одной платформе перекрывались бы.
+        //
+        // Опора-«движущаяся» монету получает: предмет за ней не поедет, но промах по
+        // монете ничего не стоит — в отличие от бустера, который иначе оказался бы
+        // недосягаем. Небольшой снос как раз делает монету целью, а не автоматикой.
+        if (!boostHere && anchor.kind !== 'spring' && rng() < rules.coinChance) {
+            state.pickups.push({
+                id: state.nextId++,
+                kind: 'coin',
                 x: anchor.x + (anchor.w - PICKUP_W) / 2,
                 y: anchor.y - PICKUP_H - 2,
                 w: PICKUP_W,
@@ -346,7 +385,7 @@ function isSolid(platform) {
 // физику впритык, без накопителя и таймеров. Возвращает тиковые флаги для звука и
 // статистики — по образцу step() змейки.
 export function stepOnce(state) {
-    const result = { landed: false, brokePlatform: false, fell: false, boosted: null };
+    const result = { landed: false, brokePlatform: false, fell: false, boosted: null, coins: 0 };
     if (!state.alive) return result;
 
     const dt = STEP_MS / 1000;
@@ -446,11 +485,21 @@ export function stepOnce(state) {
             if (pickup.taken) continue;
             if (low < pickup.y || top > pickup.y + PICKUP_H) continue;
             if (!overlapsXSweep(prevX, rawX, pickup)) continue;
+            if (pickup.kind === 'coin') {
+                // Монета ничего не делает с физикой и потому не прерывает обход: за один
+                // подшаг можно собрать хоть три штуки, и все три должны засчитаться.
+                pickup.taken = true;
+                state.coins += 1;
+                result.coins += 1;
+                continue;
+            }
+            // Два бустера за один подшаг не складываем — второй подождёт (taken ему не
+            // ставим, поэтому он остаётся на месте и подберётся позже).
+            if (result.boosted) continue;
             pickup.taken = true;
             const spec = BOOST[pickup.kind] || BOOST.propeller;
             player.boost = { kind: pickup.kind, msLeft: spec.ms, vy: spec.vy };
             result.boosted = pickup.kind;
-            break; // два бустера за один подшаг — не складываем, второй подождёт
         }
     }
 
@@ -485,7 +534,7 @@ export function stepOnce(state) {
 // Единственная точка входа для игрового времени: ui/ зовёт её на каждом rAF, а сколько
 // подшагов прогнать — решает сама. Флаги подшагов схлопываются в один результат.
 export function advance(state, dtMs) {
-    const result = { landed: false, brokePlatform: false, fell: false, boosted: null, steps: 0 };
+    const result = { landed: false, brokePlatform: false, fell: false, boosted: null, coins: 0, steps: 0 };
     if (!state.alive) return result;
 
     state.accumulatorMs += Number.isFinite(dtMs) && dtMs > 0 ? dtMs : 0;
@@ -501,6 +550,9 @@ export function advance(state, dtMs) {
         if (step.landed) result.landed = true;
         if (step.brokePlatform) result.brokePlatform = true;
         if (step.boosted) result.boosted = step.boosted;
+        // Монеты не флаг, а количество: за кадр их может быть несколько, и суммой
+        // распоряжается уже ui/ (звук на каждую, счётчик в шапке).
+        result.coins += step.coins;
         if (step.fell) result.fell = true;
     }
 

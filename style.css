@@ -240,7 +240,7 @@
  *                        их читает JS через getComputedStyle, а color-mix в значении
  *                        пользовательского свойства до JS доезжает неразобранным.
  *   --stg-doodlejump-*   цвета канваса «Дудл Джампа» (фигурка, её глаза, типы платформ,
- *                        бустеры) — то же ограничение, что у --stg-snake-*: только
+ *                        бустеры, монеты) — то же ограничение, что у --stg-snake-*: только
  *                        литералы и var().
  *
  * Значения по умолчанию — режим theme: ровно то, что было до появления палитры.
@@ -283,6 +283,7 @@
     --stg-doodlejump-spring: #e0c34d;
     --stg-doodlejump-propeller: #7bc6c6;
     --stg-doodlejump-rocket: #d1603d;
+    --stg-doodlejump-coin: #e0b84d;
 }
 
 /* Тёмная палитра. Не «тема ST потемнее», а свой набор: фон окна чуть светлее чёрного,
@@ -316,6 +317,7 @@
     --stg-doodlejump-spring: #e0c34d;
     --stg-doodlejump-propeller: #7bc6c6;
     --stg-doodlejump-rocket: #d1603d;
+    --stg-doodlejump-coin: #e0b84d;
 }
 
 /* Светлая палитра. Поле белое, а подложка окна — тёплый серый: белое поле на белом окне
@@ -348,6 +350,7 @@
     --stg-doodlejump-spring: #b08f14;
     --stg-doodlejump-propeller: #2f7d7d;
     --stg-doodlejump-rocket: #a83c1c;
+    --stg-doodlejump-coin: #a8801a;
 }
 
 /* Своя палитра — своя подложка: без неё шапка окна и подписи остались бы цветом темы ST

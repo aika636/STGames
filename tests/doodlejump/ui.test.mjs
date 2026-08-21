@@ -193,8 +193,9 @@ await session({ gameId: 'doodlejump' }, async (root) => {
     test('mount строит canvas, шапку со счётом и экранные кнопки', () => {
         assert(root.querySelector('.doodlejump-canvas'), 'canvas на месте');
         assert(root.querySelector('.doodlejump-stage'), 'сцена на месте');
-        assertEqual(root.querySelectorAll('.doodlejump-header span').length, 3, 'высота, платформы и рекорд');
+        assertEqual(root.querySelectorAll('.doodlejump-header span').length, 4, 'высота, платформы, монеты и рекорд');
         assert(root.querySelector('.doodlejump-header').textContent.includes('Высота'), 'счёт в шапке, а не на канвасе');
+        assert(root.querySelector('.doodlejump-header').textContent.includes('Монеты: 0'), 'монеты заезда в шапке');
         assertEqual(root.querySelectorAll('.doodlejump-buttons .doodlejump-btn').length, 2, 'две кнопки');
         assert(root.querySelector('.doodlejump-btn-left'), 'кнопка влево');
         assert(root.querySelector('.doodlejump-btn-right'), 'кнопка вправо');
@@ -444,6 +445,112 @@ await session({ gameId: 'doodlejump' }, async (root) => {
     });
 });
 
+// --- Монеты: счётчик заезда, кошелёк и брошенный заезд (§G.2 плана).
+
+// Партии выше идут на константе Math.random = 0.001, и на ней каждый этаж выходит
+// движущимся — монет там не бывает вовсе. Здесь нужна другая партия: зацикленная
+// последовательность бросков даёт ровный столбик обычных платформ с монетой на каждой,
+// то есть заезд, где монеты собираются гарантированно, а не «повезёт».
+//
+// Порядок бросков генератора на этаж: зазор, x, тип платформы, бустер, монета.
+const COIN_SEQ = [0.4, 0.5, 0.5, 0.9, 0.01];
+let coinRoll = 0;
+function useCoinRng() {
+    coinRoll = 0;
+    Math.random = () => COIN_SEQ[coinRoll++ % COIN_SEQ.length];
+}
+function useDefaultRng() {
+    Math.random = () => 0.001;
+}
+
+function headerCoins(root) {
+    const span = root.querySelectorAll('.doodlejump-header span')[2];
+    return Number(span.textContent.replace(/\D+/g, ''));
+}
+function walletCoins() {
+    return getSettings().games.doodlejump.wallet.coins;
+}
+
+// Копим монеты, пока счётчик заезда не сдвинется с нуля.
+function collectCoins(root, limit = 400) {
+    frame();
+    let guard = 0;
+    while (headerCoins(root) === 0 && guard < limit) {
+        frame();
+        guard += 1;
+    }
+    return headerCoins(root);
+}
+
+useCoinRng();
+const walletBeforeFall = walletCoins();
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    test('счётчик монет за заезд растёт в шапке и кошелька не касается', () => {
+        const earned = collectCoins(root);
+        assert(earned > 0, `монеты собраны: ${earned}`);
+        assertEqual(walletCoins(), walletBeforeFall, 'пока заезд идёт, кошелёк не трогаем');
+    });
+
+    test('в конце заезда монеты уезжают в кошелёк ровно один раз', () => {
+        // Уводим фигурку с колонки платформ — заезд кончается падением.
+        key('keydown', 'ArrowRight');
+        const overlay = root.querySelector('.doodlejump-over');
+        let guard = 0;
+        while (overlay.style.display !== 'flex' && guard < 900) {
+            frame();
+            guard += 1;
+        }
+        key('keyup', 'ArrowRight');
+        assertEqual(overlay.style.display, 'flex', `заезд кончился (кадров: ${guard})`);
+
+        const earned = headerCoins(root);
+        assert(earned > 0, `за заезд собрано монет: ${earned}`);
+        assertEqual(walletCoins(), walletBeforeFall + earned, 'кошелёк вырос ровно на итог заезда');
+
+        frames(30);
+        assertEqual(walletCoins(), walletBeforeFall + earned, 'кадры после падения кошелёк не трогают');
+        assertEqual(headerCoins(root), earned, 'счётчик заезда остался счётчиком заезда');
+    });
+});
+
+// Брошенный заезд (закрыли окно) монеты ЗАСЧИТЫВАЕТ: собранное отбирать не за что, а
+// обратное решение поощряло бы досиживать до падения ради валюты.
+useCoinRng();
+const walletBeforeQuit = walletCoins();
+let earnedInQuit = 0;
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    earnedInQuit = collectCoins(root);
+    test('монеты брошенного заезда до закрытия окна ещё не в кошельке', () => {
+        assert(earnedInQuit > 0, `монеты собраны: ${earnedInQuit}`);
+        assertEqual(walletCoins(), walletBeforeQuit, 'кошелёк пока прежний');
+    });
+});
+
+test('брошенный заезд засчитывает монеты при закрытии окна', () => {
+    assertEqual(walletCoins(), walletBeforeQuit + earnedInQuit, 'кошелёк вырос на собранное');
+});
+
+// Кошелёк из руками поправленного settings.json может оказаться чем угодно: экран обязан
+// это пережить и починить запись, а не упасть.
+getSettings().games.doodlejump.wallet = 'нет у меня кошелька';
+useCoinRng();
+let earnedBroken = 0;
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    earnedBroken = collectCoins(root);
+    test('битый кошелёк в настройках не роняет экран', () => {
+        assert(earnedBroken > 0, `заезд идёт и монеты собираются: ${earnedBroken}`);
+    });
+});
+
+test('битый кошелёк чинится при записи монет, а не роняет запись', () => {
+    assertEqual(walletCoins(), earnedBroken, 'кошелёк создан заново и содержит собранное');
+});
+
+useDefaultRng();
+
 // --- Панель настроек при открытом экране: настройки живые.
 
 await session({ gameId: 'doodlejump' }, async (root) => {
@@ -544,11 +651,11 @@ test('renderSettings падает на «обычную» при битой сл
     assertEqual(container.querySelector('#doodlejump_difficulty').value, 'normal', 'выбрана обычная');
 });
 
-test('renderStats рисует три строки и кнопку сброса', () => {
+test('renderStats рисует статистику, кошелёк и кнопку сброса', () => {
     let saved = false;
     let rerendered = false;
     const api = {
-        settings: { stats: { played: 4, bestScore: 1200, bestPlatforms: 27 } },
+        settings: { stats: { played: 4, bestScore: 1200, bestPlatforms: 27 }, wallet: { coins: 42 } },
         save: () => { saved = true; },
         renderAllStats: () => { rerendered = true; },
     };
@@ -560,11 +667,13 @@ test('renderStats рисует три строки и кнопку сброса'
     assert(texts.includes('Сыграно: 4'), 'сыграно');
     assert(texts.includes('Лучшая высота: 1200'), 'лучшая высота');
     assert(texts.includes('Лучший забег по платформам: 27'), 'лучший забег по платформам');
+    assert(texts.includes('Монет в кошельке: 42'), 'кошелёк рядом со статистикой');
 
     const reset = container.querySelector('button');
     assert(reset, 'кнопка сброса на месте');
     reset.click();
     assertEqual(Object.keys(api.settings.stats).length, 0, 'статистика очищена');
+    assertEqual(api.settings.wallet.coins, 42, 'сброс статистики кошелёк не тронул');
     assert(saved, 'сохранено после сброса');
     assert(rerendered, 'статистика перерисована');
 });

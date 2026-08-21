@@ -25,3 +25,6 @@ deploy.sh
 # не едут (их уже один раз выносили — коммит 87d33a6).
 tests/e2e/live-view.mjs
 tests/e2e/theme-sweep.mjs
+
+# Куда e2e-прогон временно уносит копии расширения из третьесторонних каталогов ST
+.parked-third-party/

@@ -188,8 +188,9 @@ function createDoodleJumpScreen(root, api) {
 
     // Магазин — второй оверлей на той же сцене, а не отдельная игра в хабе: покупают
     // скины для этой игры и надевают их тут же, уходить за этим некуда
-    // (docs/plan-doodlejump-fixes.md §G.3). Лежит после оверлея падения, поэтому,
-    // открытый с экрана проигрыша, честно накрывает его собой.
+    // (docs/plan-doodlejump-fixes.md §G.3). Открытый с экрана проигрыша, он этот экран
+    // прячет (openShop) и возвращает при закрытии — накрыть его собой нельзя, витрина
+    // на светопрозрачной палитре темы просвечивает.
     const shop = document.createElement('div');
     shop.className = 'doodlejump-shop';
     shop.style.display = 'none';
@@ -239,6 +240,9 @@ function createDoodleJumpScreen(root, api) {
     // что. Запоминаем только, была ли пауза до открытия, чтобы закрытие магазина не сняло
     // паузу, поставленную игроком руками.
     let pausedBeforeShop = false;
+    // Был ли на экране итог заезда, когда открыли витрину: закрытие обязано вернуть его —
+    // игрок не терял результат, он просто отходил переодеться.
+    let overBeforeShop = false;
     let lastFrame = null;
     let rafId = null;
     let overRecorded = false;
@@ -426,6 +430,15 @@ function createDoodleJumpScreen(root, api) {
         if (shopOpen()) return;
         pausedBeforeShop = manualPaused;
         manualPaused = true;
+        // Экран проигрыша на время витрины убирается совсем, а не прикрывается ею: фон
+        // витрины собран из --stg-surface и --stg-bg, а в режиме «Цвета таверны» обе эти
+        // переменные сами полупрозрачные (см. блок палитры в style.css), и смесь двух
+        // прозрачных цветов прозрачна — итог заезда просвечивал сквозь витрину прямо
+        // поверх плиток. Непрозрачную подложку сюда не поставить: в режиме темы окно
+        // игры сквозное осознанно. Прятать оверлей надёжнее — это не зависит ни от одного
+        // из четырёх режимов оформления.
+        overBeforeShop = overlay.style.display !== 'none';
+        overlay.style.display = 'none';
         shop.style.display = 'flex';
         renderShop();
         updateStatus();
@@ -435,6 +448,10 @@ function createDoodleJumpScreen(root, api) {
         if (!shopOpen()) return;
         shop.style.display = 'none';
         shop.innerHTML = '';
+        // Итог заезда возвращается ровно таким, каким был: разметку оверлея витрина не
+        // трогала, показать его достаточно обратно.
+        if (overBeforeShop) overlay.style.display = 'flex';
+        overBeforeShop = false;
         manualPaused = pausedBeforeShop;
         // Часы цикла стояли всё это время: без сброса первый кадр после закрытия пришёл бы
         // с огромным dt — та же причина, что и при возврате на вкладку.

@@ -232,17 +232,28 @@ function drawMoon(ctx2d, x, y, w, h, facing, colors) {
     const cx = x + w / 2;
     const cy = y + h / 2;
     const inner = outer * 0.82;
-    const shift = (facing < 0 ? 1 : -1) * outer * 0.62;
+    // dir — куда уводится вырез (назад по ходу), base — та же сторона в углах пути.
+    const dir = facing < 0 ? 1 : -1;
+    const gap = outer * 0.62;
+    const base = dir > 0 ? 0 : Math.PI;
 
-    // Два круга в одном пути и заливка по правилу evenodd: внутренний вырезает серп.
-    // Отдельный moveTo перед вторым кругом обязателен — иначе браузер соединил бы дуги
-    // хордой и вырез поехал бы.
+    // Серп рисуется контуром из двух дуг, а не «двумя кругами с evenodd»: вырез шире
+    // диска и торчит за его край, а evenodd залил бы этот торчащий кусок отдельной
+    // линзой — её-то и обрезал край канваса в витрине магазина. Здесь путь идёт по
+    // дуге диска СНАРУЖИ выреза, а обратно — по дуге выреза ВНУТРИ диска, между двумя
+    // общими точками окружностей; за габарит w × h такой контур не выходит никогда.
+    //
+    // alpha — половина угла, под которым точки пересечения видны из центра диска,
+    // beta — из центра выреза (теорема косинусов; clamp страхует от ошибки округления).
+    const clamp = (v) => Math.max(-1, Math.min(1, v));
+    const alpha = Math.acos(clamp((gap * gap + outer * outer - inner * inner) / (2 * gap * outer)));
+    const beta = Math.acos(clamp((gap * gap + inner * inner - outer * outer) / (2 * gap * inner)));
+
     ctx2d.fillStyle = colors.body;
     ctx2d.beginPath();
-    ctx2d.arc(cx, cy, outer, 0, Math.PI * 2);
-    ctx2d.moveTo(cx + shift + inner, cy);
-    ctx2d.arc(cx + shift, cy, inner, 0, Math.PI * 2);
-    ctx2d.fill('evenodd');
+    ctx2d.arc(cx, cy, outer, base + alpha, base + Math.PI * 2 - alpha);
+    ctx2d.arc(cx + dir * gap, cy, inner, base - beta, base + beta, true);
+    ctx2d.fill();
 
     ctx2d.fillStyle = colors.eye;
     dot(ctx2d, cx + (facing < 0 ? -outer * 0.6 : outer * 0.6), cy - outer * 0.28, w * 0.075);

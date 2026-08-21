@@ -13,7 +13,7 @@ import {
     EMPTY_ENTRY, readStats, recordPlayed, recordResult, resetStats,
 } from '../../src/games/doodlejump/core/stats.js';
 import {
-    DEFAULT_SKIN, addCoins, buySkin, readSkins, readWallet, wearSkin,
+    DEFAULT_SKIN, addCoins, buySkin, readSkins, readWallet, repairWallet, wearSkin,
 } from '../../src/games/doodlejump/core/wallet.js';
 import { assert, assertEqual, report, test } from '../_harness.mjs';
 
@@ -809,6 +809,28 @@ test('скины нормализуются: default не теряется, curr
     const ok = readSkins({ skins: { owned: ['ninja', 'ninja', '', 7], current: 'ninja' } });
     assertEqual(JSON.stringify(ok.owned), JSON.stringify([DEFAULT_SKIN, 'ninja']), 'повторы и мусор убраны');
     assertEqual(ok.current, 'ninja', 'купленный скин выбран');
+});
+
+// Починка отдельным вызовом: UI зовёт её при открытии витрины и сразу сохраняет. Раньше
+// нормализация была побочным действием buySkin(), а сохранял UI только успешную ветку —
+// поправленный руками settings.json чинился заново после каждой перезагрузки таверны.
+test('repairWallet чинит обе записи на месте, ничего не покупая', () => {
+    const settings = { wallet: { coins: -5 }, skins: 'нет' };
+    repairWallet(settings);
+    assertEqual(settings.wallet.coins, 0, 'отрицательный баланс обнулён');
+    assertEqual(JSON.stringify(settings.skins.owned), JSON.stringify([DEFAULT_SKIN]), 'список скинов создан');
+    assertEqual(settings.skins.current, DEFAULT_SKIN, 'надет бесплатный скин');
+
+    const junk = { wallet: 'нет', skins: { owned: ['ufo', 'ufo', 3], current: 'нет такого' } };
+    repairWallet(junk);
+    assertEqual(junk.wallet.coins, 0, 'скаляр вместо кошелька заменён записью');
+    assertEqual(JSON.stringify(junk.skins.owned), JSON.stringify([DEFAULT_SKIN, 'ufo']), 'повторы и мусор убраны');
+    assertEqual(junk.skins.current, DEFAULT_SKIN, 'несуществующий current заменён');
+
+    const good = { wallet: { coins: 12 }, skins: { owned: [DEFAULT_SKIN, 'ufo'], current: 'ufo' } };
+    repairWallet(good);
+    assertEqual(good.wallet.coins, 12, 'исправные монеты не тронуты');
+    assertEqual(good.skins.current, 'ufo', 'исправный current не тронут');
 });
 
 // --- Магазин: покупка и надевание (docs/plan-doodlejump-fixes.md §G.3) ---------------

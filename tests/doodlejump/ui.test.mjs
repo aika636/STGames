@@ -632,7 +632,86 @@ test('битый кошелёк чинится при записи монет, �
     assertEqual(walletCoins(), earnedBroken, 'кошелёк создан заново и содержит собранное');
 });
 
+// Витрина, открытая посреди заезда, показывает и собранное за него: раньше в шапке было
+// «Монеты: 2», а в витрине «Монет: 0», и купить на них было нельзя
+// (docs/plan-doodlejump-fixes.md §L.1). Заодно проверяем главную опасность этой правки:
+// монеты, собранные ПОСЛЕ похода в магазин, не должны потеряться.
+
+getSettings().games.doodlejump.wallet = { coins: 7 };
+getSettings().games.doodlejump.skins = { owned: ['default'], current: 'default' };
+useCoinRng();
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    let earnedBeforeShop = 0;
+
+    test('витрина посреди заезда показывает кошелёк вместе с монетами заезда', () => {
+        earnedBeforeShop = collectCoins(root);
+        assert(earnedBeforeShop > 0, `монеты собраны: ${earnedBeforeShop}`);
+
+        root.querySelector('.doodlejump-shop-open').click();
+        assertEqual(
+            shopBalance(root),
+            7 + earnedBeforeShop,
+            'баланс витрины — кошелёк плюс собранное за заезд',
+        );
+        assertEqual(headerCoins(root), earnedBeforeShop, 'счётчик заезда остался счётчиком заезда');
+        root.querySelector('.doodlejump-shop-close').click();
+    });
+
+    test('монеты, собранные после похода в магазин, не теряются', () => {
+        // collectCoins ждёт первую монету, а здесь их уже собрано — ждём следующую.
+        let guard = 0;
+        while (headerCoins(root) === earnedBeforeShop && guard < 800) {
+            frame();
+            guard += 1;
+        }
+        const afterShop = headerCoins(root);
+        assert(afterShop > earnedBeforeShop, `за заезд собрано больше: ${earnedBeforeShop} → ${afterShop}`);
+        root.querySelector('.doodlejump-shop-open').click();
+        assertEqual(shopBalance(root), 7 + afterShop, 'в кошельке всё собранное, без потерь и без двойного счёта');
+        root.querySelector('.doodlejump-shop-close').click();
+    });
+});
+
+// Битые записи чинятся при ОТКРЫТИИ витрины и сразу сохраняются: раньше починка была
+// побочным действием покупки, а сохранял UI только успешную ветку — до перезагрузки
+// таверны, и так по кругу (docs/plan-doodlejump-fixes.md §L.5).
+
+getSettings().games.doodlejump.wallet = { coins: -5 };
+getSettings().games.doodlejump.skins = 'нет';
 useDefaultRng();
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    test('открытие витрины чинит настройки и сохраняет починку', () => {
+        const savesBefore = saves;
+        root.querySelector('.doodlejump-shop-open').click();
+
+        const game = getSettings().games.doodlejump;
+        assertEqual(game.wallet.coins, 0, 'отрицательный баланс обнулён');
+        assert(Array.isArray(game.skins.owned), 'список скинов стал списком');
+        assertEqual(game.skins.current, 'default', 'надет бесплатный скин');
+        assert(saves > savesBefore, 'починка сохранена, а не дожила до перезагрузки');
+    });
+
+    test('покупка без монет: отказ виден игроку, настройки не портятся', () => {
+        const ufo = shopItem(root, 'ufo');
+        ufo.querySelector('.doodlejump-shop-action').click();
+        assertEqual(shopBalance(root), 0, 'баланс не изменился');
+        assertEqual(getSettings().games.doodlejump.skins.current, 'default', 'скин не надет');
+    });
+
+    test('клик по плитке работает так же, как по её кнопке', () => {
+        getSettings().games.doodlejump.wallet.coins = 500;
+        root.querySelector('.doodlejump-shop-close').click();
+        root.querySelector('.doodlejump-shop-open').click();
+        // Клик мимо кнопки — по превью: раньше он не делал ничего.
+        shopItem(root, 'ufo').querySelector('.doodlejump-shop-preview')
+            .dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        assertEqual(getSettings().games.doodlejump.skins.current, 'ufo', 'скин куплен и надет');
+        assertEqual(shopBalance(root), 475, 'цена списана ровно один раз');
+        root.querySelector('.doodlejump-shop-close').click();
+    });
+});
 
 // --- Реестр скинов (§G.4 плана): контракт и отрисовка каждой формы.
 //
@@ -789,15 +868,24 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         assert(previews.length > 0, 'у превью просили контекст');
         assert(previews.every((r) => r.attached), 'и каждый раз канвас уже висел в дереве экрана');
 
-        // Поле на время витрины убирается: она полупрозрачная, и платформы рябили сквозь
-        // плитки — игрок это и заметил на живом устройстве.
+        // Поле на время витрины убирается совсем.
         assert(
             root.querySelector('.doodlejump-stage').classList.contains('is-shopping'),
             'поле спрятано, пока открыта витрина',
         );
 
+        // И кадры в скрытый канвас не рисуются: у него нет клиентских размеров, view.js
+        // ушёл бы на фолбэк 320×512 и перевыделял буфер каждый кадр (замер в живой ST:
+        // 324×520 → 320×512 → 324×520).
+        const passBefore = mock2d.pass;
         frames(10);
+        assertEqual(mock2d.pass, passBefore, 'под витриной кадры не рисуются вовсе');
+
+        // Партия при этом стоит: закрываем витрину и сверяем, что фигурка там же, где
+        // была до открытия.
+        root.querySelector('.doodlejump-shop-close').click();
         assertClose2(lastPlayerX(), before, 0.001, 'пока магазин открыт, фигурка стоит');
+        root.querySelector('.doodlejump-shop-open').click();
     });
 
     test('надетый скин помечен, купить его нельзя', () => {

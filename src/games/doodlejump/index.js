@@ -12,7 +12,7 @@ import {
     setDifficulty, setInput, setMovingPlatforms,
 } from './core/engine.js';
 import { readStats, recordPlayed, recordResult, resetStats } from './core/stats.js';
-import { addCoins, buySkin, readSkins, readWallet, wearSkin } from './core/wallet.js';
+import { addCoins, buySkin, readSkins, readWallet, repairWallet, wearSkin } from './core/wallet.js';
 import { logError } from '../../log.js';
 import { checkbox, row, select } from '../../shell/settings-ui.js';
 import { createView } from './ui/view.js';
@@ -253,7 +253,8 @@ function createDoodleJumpScreen(root, api) {
     let lastFrame = null;
     let rafId = null;
     let overRecorded = false;
-    let cashedOut = false;
+    // Сколько монет текущего заезда уже уехало в кошелёк. См. cashOut().
+    let cashedCoins = 0;
     let destroyed = false;
     // Подряд идущие сбойные кадры и «заезд остановлен ошибкой». См. onFrame().
     let frameErrors = 0;
@@ -395,32 +396,48 @@ function createDoodleJumpScreen(root, api) {
 
             const btn = document.createElement('button');
             btn.className = 'doodlejump-shop-action menu_button';
+            // Отрисовки поля тут нет ни в одной ветке: канвас под витриной скрыт, у него
+            // clientWidth === 0, и draw() уходил на фолбэк 320×512, перевыделяя буфер
+            // (замер: 324×520 → 320×512 → 324×520). Новый скин показывает closeShop().
+            let action = null;
             if (isWorn) {
                 btn.textContent = 'Надет';
                 btn.disabled = true;
             } else if (isOwned) {
                 btn.textContent = 'Надеть';
-                btn.addEventListener('click', () => {
+                action = () => {
                     wearSkin(settings, skin.id);
                     api.save();
                     renderShop();
-                    view.draw(state);
-                });
+                };
             } else {
                 btn.textContent = `Купить за ${skin.price}`;
-                btn.addEventListener('click', () => {
+                action = () => {
                     // Цену магазин передаёт сам: реестр скинов живёт в ui/, и ядро о нём
                     // знать не должно (docs/plan-doodlejump-fixes.md §G.3).
                     const res = buySkin(settings, skin.id, skin.price);
                     if (!res.ok) {
+                        // Отклик на КАЖДУЮ причину: молча ничего не делающая кнопка
+                        // читается как поломка игры, а не как отказ.
                         if (res.reason === 'poor') api.toast('info', 'Не хватает монет');
+                        else if (res.reason === 'owned') api.toast('info', 'Скин уже куплен');
+                        else api.toast('info', 'Такого скина нет');
                         renderShop();
                         return;
                     }
                     api.save();
                     api.renderAllStats?.();
                     renderShop();
-                    view.draw(state);
+                };
+            }
+            if (action) {
+                btn.addEventListener('click', action);
+                // Вся плитка — тоже цель: кнопка узкая (72 px превью против 22 px кнопки),
+                // и промах мимо неё пальцем не делал ничего. Клик по самой кнопке сюда
+                // всплывает — его пропускаем, иначе действие сработало бы дважды.
+                item.addEventListener('click', (e) => {
+                    if (e.target.closest('button')) return;
+                    action();
                 });
             }
 
@@ -452,6 +469,19 @@ function createDoodleJumpScreen(root, api) {
         if (shopOpen()) return;
         pausedBeforeShop = manualPaused;
         manualPaused = true;
+        // Монеты заезда — в кошелёк прямо сейчас. Иначе витрина показывала бы баланс без
+        // собранного («Монеты: 2» в шапке против «Монет: 0» в витрине) и не давала бы на
+        // него купить. Обратной дороги у монет нет и так: заезд их не возвращает.
+        cashOut();
+        // И заодно чиним записи настроек, если их правили руками. Отдельным вызовом, а не
+        // побочным действием покупки: сохранить починку надо в любом случае, а покупка
+        // может и не состояться (docs/plan-doodlejump-fixes.md §L.5).
+        try {
+            repairWallet(settings);
+            api.save();
+        } catch (err) {
+            logError('не удалось починить кошелёк дудл джампа', err);
+        }
         // Экран проигрыша на время витрины убирается совсем, а не прикрывается ею: фон
         // витрины собран из --stg-surface и --stg-bg, а в режиме «Цвета таверны» обе эти
         // переменные сами полупрозрачные (см. блок палитры в style.css), и смесь двух
@@ -505,11 +535,15 @@ function createDoodleJumpScreen(root, api) {
     // решение к тому же поощряло бы досиживать до падения ради валюты. Поэтому cashOut()
     // зовётся и из record(), и из destroy(), а флаг не даёт заплатить дважды.
     function cashOut() {
-        if (cashedOut) return;
-        cashedOut = true;
-        if (!state.coins) return;
+        // Считаем не «было ли уже», а СКОЛЬКО уже уехало: витрина открывается и посреди
+        // заезда (там она зовёт cashOut(), чтобы показать честный баланс и дать на него
+        // купить), после чего заезд продолжается и монеты копятся дальше. Флаг «уже
+        // выплачено» терял бы всё, собранное после похода в магазин.
+        const pending = state.coins - cashedCoins;
+        if (pending <= 0) return;
+        cashedCoins = state.coins;
         try {
-            addCoins(settings, state.coins);
+            addCoins(settings, pending);
             api.save();
             api.renderAllStats?.();
         } catch (err) {
@@ -550,7 +584,7 @@ function createDoodleJumpScreen(root, api) {
         // На всякий случай и здесь: после падения монеты уже в кошельке (record()), но
         // рестарт не должен быть способом потерять собранное ни при каком порядке событий.
         cashOut();
-        cashedOut = false;
+        cashedCoins = 0;
         state = newGame();
         applyInput();
         manualPaused = false;
@@ -619,7 +653,10 @@ function createDoodleJumpScreen(root, api) {
 
         updateHeader();
         updateStatus();
-        view.draw(state);
+        // Витрина закрывает сцену целиком, а скрытый канвас не имеет клиентских размеров:
+        // view.js уходил бы на фолбэк 320×512 и перевыделял буфер каждый кадр. Рисовать
+        // нечего и незачем — картинку вернёт closeShop().
+        if (!shopOpen()) view.draw(state);
     }
 
     function onFrame(now) {

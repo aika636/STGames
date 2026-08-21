@@ -1,6 +1,14 @@
 // Прогон «Дудл Джампа» по темам и экранам с настоящей игрой до 5000 очков.
 //
-// Файл временный (как live-view.mjs и theme-sweep.mjs), в репозитории не остаётся.
+// Файл остаётся в репозитории: без автопилота такой прогон не сделать вовсе (руками до
+// 5000 очков в автоматическом тесте никто не доигрывает), а написать его заново стоит
+// дороже, чем хранить. Точечные пробы, наоборот, живут ровно один разбор и удаляются.
+//
+// Автопилот — политика «куда жать» плюс перехват index.js для публикации состояния.
+// Главная грабля политики: ПРИЗЕМЛЯЕТСЯ ПОДОШВА, а не макушка, то есть апекс и время
+// полёта считаются от player.y + PLAYER_H. Ошибка ровно в рост фигурки заставляет
+// целиться в недостижимую платформу — бот топчется на месте при растущем числе
+// приземлений. Отлаживать политику удобнее не в браузере, а на ядре под node.
 //
 //   node tests/e2e/doodle-sweep.mjs [--headed] [--case=<id>] [--vp=desktop|tablet|mobile]
 //                                   [--goal=5000] [--skip-play]
@@ -212,7 +220,13 @@ async function runCase(vp, kase) {
 // --- Подготовка
 
 // Публикация состояния движка: перехватываем ответ с index.js игры и дописываем
-// присвоение в window.__stgDJ рядом с каждой отрисовкой кадра.
+// присвоение в window.__stgDJ первой строкой кадрового шага.
+//
+// Грабля, стоившая ложного замечания: сначала присвоение дописывалось ПЕРЕД
+// `view.draw(state);`, и это разрывало однострочное условие `if (!shopOpen())
+// view.draw(state);` — под условие уходило присвоение, а отрисовка начинала работать
+// всегда. Прогон исправно доложил о «пересобранном буфере», которого в чистой игре нет.
+// Правило простое: дописывать только в начало блока, а не между условием и его телом.
 // Чужие расширения таверны показывают свои попапы прямо посреди прогона и перехватывают
 // клики. Гасим их сами: закрываем каждый dialog.popup, внутри которого нет .stg-root,
 // — окно STGames при этом не трогаем (Escape закрыл бы и его).
@@ -234,8 +248,8 @@ async function instrument(page) {
         const res = await route.fetch();
         let body = await res.text();
         const before = body;
-        body = body.split('view.draw(state);').join('window.__stgDJ = state; view.draw(state);');
-        if (body === before) console.log('  ! не нашли view.draw(state) в index.js игры');
+        body = body.replace('function runFrame(now) {', 'function runFrame(now) { window.__stgDJ = state;');
+        if (body === before) console.log('  ! не нашли runFrame(now) в index.js игры');
         await route.fulfill({
             status: res.status(),
             headers: { ...res.headers(), 'content-type': 'text/javascript; charset=utf-8' },
@@ -511,8 +525,8 @@ async function capture(page, where, kase) {
             finding(where, 'канвас-полупрозрачно', `${(m.canvas.faint * 100).toFixed(0)}% нарисованного с альфой < 0.5`);
         }
         if (m.canvas.blurry) finding(where, 'канвас-мыло', m.canvas.blurry);
-        if (m.canvas.hidden) {
-            finding(where, 'канвас-скрыт', `канвас скрыт (clientWidth 0), но кадры рисуются — буфер пересобран в фолбэк ${m.canvas.px}`);
+        if (m.canvas.hidden && m.canvas.fallback) {
+            finding(where, 'канвас-скрыт', `канвас скрыт (clientWidth 0), а кадры в него рисовались — буфер пересобран в фолбэк ${m.canvas.px}`);
         }
     }
 }
@@ -734,6 +748,11 @@ function measure(page, expect) {
                     px: `${width}×${height}`,
                     css: `${Math.round(rect.width)}×${Math.round(rect.height)}`,
                     hidden: cssW === 0,
+                    // Скрытый канвас сам по себе не беда: витрина прячет поле нарочно.
+                    // Беда — если буфер при этом пересобран в фолбэк view.js (320×512),
+                    // то есть кадры рисовались в невидимый канвас.
+                    fallback: width === Math.round(320 * (window.devicePixelRatio || 1))
+                        && height === Math.round(512 * (window.devicePixelRatio || 1)),
                     blurry: cssW > 0 && Math.abs(width - wantW) > 2
                         ? `буфер ${width}px при css ${cssW}px × dpr ${window.devicePixelRatio} — картинка мыльная`
                         : '',

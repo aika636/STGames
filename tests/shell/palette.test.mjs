@@ -132,15 +132,34 @@ function backgroundOf(selector) {
     return value;
 }
 
-test('--stg-solid объявлен литералом во всех трёх режимах', () => {
+// Подложка и текст на ней — пара: раз цвет подложки не зависит от темы таверны, то и
+// цвет текста не может от неё зависеть. Иначе выходит тёмное по тёмному — так в витрине
+// пропали названия скинов и цены, когда подложку сделали непрозрачной, а текст оставили
+// на --stg-fg (тот в режиме theme берётся из темы ST).
+// Цвет текста правила: как backgroundOf, но по свойству color.
+function colorOf(selector) {
+    const at = cssCode.indexOf(`\n${selector} {`);
+    if (at < 0) return null;
+    const open = cssCode.indexOf('{', at);
+    const close = cssCode.indexOf('}', open);
+    let value = null;
+    for (const m of cssCode.slice(open + 1, close).matchAll(/(?<!-)color\s*:\s*([^;]+);/g)) {
+        value = m[1].trim();
+    }
+    return value;
+}
+
+test('--stg-solid и --stg-solid-fg объявлены литералами во всех трёх режимах', () => {
     for (const [mode, declarations] of MODES) {
-        const value = declarations.get('--stg-solid');
-        assert(value, `--stg-solid объявлен в режиме ${mode}`);
-        assert(
-            /^#[0-9a-f]{6}$/.test(value),
-            `--stg-solid в режиме ${mode} — ${value}: подложка обязана быть непрозрачным `
-            + 'литералом, иначе сквозь неё видно то, что она закрывает',
-        );
+        for (const name of ['--stg-solid', '--stg-solid-fg']) {
+            const value = declarations.get(name);
+            assert(value, `${name} объявлен в режиме ${mode}`);
+            assert(
+                /^#[0-9a-f]{6}$/.test(value),
+                `${name} в режиме ${mode} — ${value}: подложка и текст на ней задаются `
+                + 'непрозрачными литералами, иначе видно то, что они закрывают',
+            );
+        }
     }
 });
 
@@ -159,6 +178,12 @@ test('подложки не собираются из полупрозрачны
         assert(
             value.includes('--stg-solid'),
             `${selector} красится не от --stg-solid (${value})`,
+        );
+        const text = colorOf(selector);
+        assert(
+            text === null || text.includes('--stg-solid-fg'),
+            `${selector} берёт цвет текста не от --stg-solid-fg (${text}): на подложке, `
+            + 'не зависящей от темы ST, текст из темы ST может оказаться невидимым',
         );
     }
 });

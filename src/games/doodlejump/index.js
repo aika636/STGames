@@ -299,6 +299,10 @@ function createDoodleJumpScreen(root, api) {
     }
 
     function showOver() {
+        // Палец, стоявший на поле в момент падения, отпускать некуда: события отпускания
+        // на оверлее не будет. Оставленное намерение старше клавиатуры и кнопок, и новый
+        // заезд начался бы с ходом в сторону точки старого падения.
+        drag.release();
         overlay.style.display = 'flex';
         const content = overlay.querySelector('.doodlejump-over-content');
         const best = readStats(settings.stats);
@@ -540,6 +544,9 @@ function createDoodleJumpScreen(root, api) {
         // Новый заезд с открытой витриной — бессмыслица: закрываем её, а не оставляем
         // висеть поверх свежей партии.
         closeShop();
+        // И то же, что в showOver(): свежая партия начинается с нулевым намерением, а не
+        // с тем, что осталось от пальца на прошлом заезде.
+        drag.release();
         // На всякий случай и здесь: после падения монеты уже в кошельке (record()), но
         // рестарт не должен быть способом потерять собранное ни при каком порядке событий.
         cashOut();
@@ -649,15 +656,22 @@ function createDoodleJumpScreen(root, api) {
         },
         // Пока открыт магазин, пауза и рестарт с клавиатуры игнорируются: партия и так
         // стоит, а Enter не должен начинать новый заезд за спиной у витрины.
+        //
+        // Оба возвращают «сделал»: по этому признаку controls.js решает, гасить клавишу
+        // или отдать её дальше. Пробел при открытой витрине не наш — им прокручивают
+        // список скинов.
         onPause: () => {
-            if (shopOpen()) return;
+            if (shopOpen()) return false;
             manualPaused = !manualPaused;
             updateStatus();
+            return true;
         },
         onRestart: () => {
             // После остановки по ошибке Enter — единственный выход, поэтому он работает
             // независимо от того, жива ли партия.
-            if ((crashed || !state.alive) && !shopOpen()) restart();
+            if (!(crashed || !state.alive) || shopOpen()) return false;
+            restart();
+            return true;
         },
     });
 

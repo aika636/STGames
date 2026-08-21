@@ -9,7 +9,11 @@
 // стоящий флаг.
 //
 // Гасятся только обработанные клавиши, Esc не трогаем: его получает попап и закрывает
-// окно целиком.
+// окно целиком. «Обработанные» — это в том числе Enter и Space, на которые экран мог и не
+// отреагировать: пауза при открытой витрине выходит сразу, рестарт — пока партия жива.
+// Поэтому onPause() и onRestart() возвращают признак «сделал», и preventDefault ставится
+// только по нему. Иначе Space съедался бы всегда — и список скинов в витрине переставал
+// прокручиваться пробелом, не получая взамен ничего (правило 4 docs/games.md).
 
 import { PLAYER_W, WORLD_W } from '../core/engine.js';
 
@@ -64,13 +68,13 @@ export function attachKeyboard({ onInput, onPause, onRestart }) {
             else rightDown = true;
             emit();
         } else if (PAUSE_KEYS.has(e.key)) {
+            if (!onPause()) return;
             e.preventDefault();
             e.stopPropagation();
-            onPause();
         } else if (e.key === 'Enter') {
+            if (!onRestart()) return;
             e.preventDefault();
             e.stopPropagation();
-            onRestart();
         }
     }
 
@@ -251,6 +255,15 @@ export function createDrag({ canvas, getPlayerX, onInput }) {
     bag.on(canvas, 'pointermove', onPointerMove);
     bag.on(canvas, 'pointerup', onPointerUp);
     bag.on(canvas, 'pointercancel', onPointerUp);
+    // Те же два обработчика ещё и на документе. Захват указателя — «удобство, а не
+    // необходимость» (см. выше), и там, где его нет, палец, уехавший за край поля и
+    // отпущенный снаружи, не давал канвасу НИ ОДНОГО события: намерение оставалось
+    // висеть, а оно старше клавиатуры и кнопок — управление становилось мёртвым до
+    // следующего тапа по полю. Проверка по pointerId остаётся: чужой палец, отпущенный
+    // где-то ещё, ведущего не отменяет. Когда захват работает, событие приходит дважды
+    // (канвас, потом всплытие) — второй раз выходит по той же проверке.
+    bag.on(document, 'pointerup', onPointerUp);
+    bag.on(document, 'pointercancel', onPointerUp);
 
     return {
         // Зовётся каждый кадр: цель не двигалась, а фигурка — да.

@@ -160,11 +160,15 @@ function stubRect(canvas, width = 320) {
     return canvas;
 }
 
-function pointer(canvas, type, clientX, id = 1) {
+function pointerOn(target, type, clientX, id = 1) {
     const event = new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, clientX });
     Object.defineProperty(event, 'pointerId', { value: id });
-    canvas.dispatchEvent(event);
+    target.dispatchEvent(event);
     return event;
+}
+
+function pointer(canvas, type, clientX, id = 1) {
+    return pointerOn(canvas, type, clientX, id);
 }
 
 // Фигурку в записанных заливках узнаём по ширине: она PLAYER_W мировых единиц, а
@@ -414,6 +418,70 @@ await session({ gameId: 'doodlejump' }, async (root) => {
 });
 
 // --- Падение: оверлей и запись статистики ровно один раз.
+
+// Ввод: отпускание пальца мимо канваса и «гасим только обработанное»
+// (docs/plan-doodlejump-fixes.md §J). Своя сессия, а не продолжение предыдущей: обе
+// проверки меряют движение живой фигурки, а к концу той сессии заезд уже потрёпан —
+// заезд мог кончиться падением прямо посреди замера.
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    // --- Палец, отпущенный за краем поля (docs/plan-doodlejump-fixes.md §J.1).
+    //
+    // setPointerCapture — «удобство, а не необходимость»: там, где его нет, отпускание за
+    // краем поля не приходило канвасу вовсе, и намерение пальца оставалось висеть. А оно
+    // старше клавиатуры и кнопок — управление становилось мёртвым до нового тапа по полю.
+
+    test('палец, отпущенный мимо канваса, отпускает управление', () => {
+        ensureAlive(root);
+        const canvas = stubRect(root.querySelector('.doodlejump-canvas'));
+        pointer(canvas, 'pointerdown', 310);
+        frames(10);
+        // Отпускание приходит в документ, а не на канвас — ровно так это выглядит, когда
+        // палец уехал за край поля, а захват указателя не сработал.
+        pointerOn(document, 'pointerup', 310);
+        frames(14);
+        const settled = lastPlayerX();
+        frames(8);
+        assert(Math.abs(lastPlayerX() - settled) < 0.5, `фигурка встала: ${settled} → ${lastPlayerX()}`);
+
+        // И клавиатура снова доходит до ядра: намерение пальца её больше не перебивает.
+        key('keydown', 'ArrowLeft');
+        frames(14);
+        const before = lastPlayerX();
+        frames(8);
+        assert(lastPlayerX() < before, `клавиатура жива: ${before} → ${lastPlayerX()}`);
+        key('keyup', 'ArrowLeft');
+        frames(12);
+    });
+
+    // --- Гасим только обработанное (docs/plan-doodlejump-fixes.md §J.2, правило 4
+    // docs/games.md). Enter во время живой партии игра не обрабатывает, пробел при
+    // открытой витрине — тоже: им прокручивают список скинов.
+
+    test('Enter во время живой партии не гасится', () => {
+        ensureAlive(root);
+        const enter = key('keydown', 'Enter');
+        assert(!enter.defaultPrevented, 'партия жива — Enter уходит дальше');
+    });
+
+    test('пробел ставит паузу и потому гасится', () => {
+        const space = key('keydown', ' ');
+        assert(space.defaultPrevented, 'пауза сработала — пробел наш');
+        assertEqual(root.querySelector('.doodlejump-status').textContent, 'Пауза', 'и она видна');
+        key('keydown', ' ');
+        frames(2);
+    });
+
+    test('при открытой витрине Enter и пробел уходят дальше', () => {
+        root.querySelector('.doodlejump-shop-open').click();
+        const space = key('keydown', ' ');
+        assert(!space.defaultPrevented, 'пробелом прокручивают список скинов');
+        const enter = key('keydown', 'Enter');
+        assert(!enter.defaultPrevented, 'Enter за спиной у витрины партию не начинает');
+        root.querySelector('.doodlejump-shop-close').click();
+        frames(2);
+    });
+});
 
 const playedBefore = getSettings().games.doodlejump.stats.played;
 

@@ -127,6 +127,67 @@ test('свип ловит тонкую платформу, которую гру
     assertEqual(state.player.vy, JUMP_VELOCITY, 'отскок');
 });
 
+// Свип по горизонтали (docs/plan-doodlejump-fixes.md §C). Отдельный подшаг с огромной vx —
+// не имитация игры, а способ развести начало и конец подшага дальше ширины платформы:
+// на боевых MOVE_SPEED окно промаха всего 3.5 wu, и в тесте оно тонуло бы в допуске.
+test('свип по x ловит платформу, мимо которой фигурка проехала за один подшаг', () => {
+    const state = bareState();
+    state.platforms = [{ id: 1, x: 200, y: 300, w: 20, kind: 'normal' }];
+    state.player.x = 150;
+    state.player.y = 300 - PLAYER_H;
+    state.player.vy = 100;
+    state.player.vx = 10000;
+    setInput(state, 1);
+
+    const beforeX = state.player.x;
+    const res = stepOnce(state);
+    assert(beforeX + PLAYER_W < 200, 'до подшага фигурка была целиком левее платформы');
+    assert(state.player.x > 220, 'после подшага — целиком правее');
+    assert(res.landed, 'отрезок траектории пересёк платформу — приземление засчитано');
+    assertEqual(state.player.y, 300 - PLAYER_H, 'фигурку прижало к платформе');
+});
+
+test('свип по x работает через wrap', () => {
+    const state = bareState();
+    state.platforms = [{ id: 1, x: 5, y: 300, w: 40, kind: 'normal' }];
+    state.player.x = 350;
+    state.player.y = 300 - PLAYER_H;
+    state.player.vy = 100;
+    state.player.vx = 20000;
+    setInput(state, 1);
+
+    const res = stepOnce(state);
+    assert(state.player.x > 100, 'фигурка вышла слева и уехала правее платформы');
+    assert(res.landed, 'платформа найдена в копии, сдвинутой на WORLD_W');
+});
+
+test('приземление на движущуюся платформу даёт фигурке её скорость', () => {
+    const state = bareState();
+    state.platforms = [{ id: 1, x: 100, y: 300, w: 120, kind: 'moving', vx: 60 }];
+    state.player.x = 140;
+    state.player.y = 300 - PLAYER_H;
+    state.player.vy = 100;
+    state.player.vx = 0;
+    setInput(state, 0);
+
+    const res = stepOnce(state);
+    assert(res.landed, 'приземление засчитано');
+    assertClose(state.player.vx, 60, 1e-9, 'платформа подтолкнула фигурку');
+});
+
+test('допуск по краю не превращает платформу в магнит', () => {
+    const state = bareState();
+    state.platforms = [{ id: 1, x: 100, y: 300, w: 60, kind: 'normal' }];
+    state.player.x = 180; // левый край фигурки в 20 wu правее правого края платформы
+    state.player.y = 300 - PLAYER_H;
+    state.player.vy = 100;
+    setInput(state, 0);
+
+    const res = stepOnce(state);
+    assert(!res.landed, 'до платформы явно не долетели — приземления нет');
+    assertEqual(state.landings, 0, 'счётчик платформ не тронут');
+});
+
 test('wrap по горизонтали в обе стороны', () => {
     const left = bareState();
     left.player.x = 1;

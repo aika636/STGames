@@ -551,6 +551,145 @@ test('битый кошелёк чинится при записи монет, �
 
 useDefaultRng();
 
+// --- Магазин скинов (§G.3 плана): оверлей внутри игры, а не игра в хабе.
+
+function shopBalance(root) {
+    return Number(root.querySelector('.doodlejump-shop-balance').textContent.replace(/\D+/g, ''));
+}
+function shopItem(root, id) {
+    return root.querySelector(`.doodlejump-shop-item[data-skin-id="${id}"]`);
+}
+function gameSkins() {
+    return getSettings().games.doodlejump.skins;
+}
+
+// Кошелёк набивается напрямую: сколько монет накопили тесты выше — их дело, а магазину
+// нужна заведомо достаточная сумма.
+getSettings().games.doodlejump.wallet = { coins: 500 };
+getSettings().games.doodlejump.skins = { owned: ['default'], current: 'default' };
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    const shop = root.querySelector('.doodlejump-shop');
+
+    test('кнопка в шапке открывает магазин и ставит партию на паузу', () => {
+        assert(shop, 'оверлей магазина в разметке');
+        assertEqual(shop.style.display, 'none', 'закрыт при монтировании');
+
+        frame();
+        key('keydown', 'ArrowRight');
+        frames(5);
+        const before = lastPlayerX();
+
+        root.querySelector('.doodlejump-shop-open').click();
+        assertEqual(shop.style.display, 'flex', 'магазин открыт');
+        assert(root.querySelector('.doodlejump-status').textContent.includes('Магазин'), 'статус говорит о паузе');
+        assertEqual(shopBalance(root), 500, 'баланс — кошелёк, а не счётчик заезда');
+        assertEqual(root.querySelectorAll('.doodlejump-shop-item').length, 3, 'три плитки скинов');
+        assert(root.querySelector('.doodlejump-shop-preview'), 'превью рисуется на канвасе');
+
+        frames(10);
+        assertClose2(lastPlayerX(), before, 0.001, 'пока магазин открыт, фигурка стоит');
+    });
+
+    test('надетый скин помечен, купить его нельзя', () => {
+        const item = shopItem(root, 'default');
+        assert(item.classList.contains('is-worn'), 'бесплатный скин надет');
+        assertEqual(item.querySelector('.doodlejump-shop-note').textContent, 'Надет', 'подпись состояния');
+        assert(item.querySelector('.doodlejump-shop-action').disabled, 'кнопка не нажимается');
+    });
+
+    test('покупка списывает монеты, надевает скин и сохраняет настройки', () => {
+        const savesBefore = saves;
+        const item = shopItem(root, 'ufo');
+        assertEqual(item.querySelector('.doodlejump-shop-note').textContent, 'Цена: 25', 'цена на плитке');
+        item.querySelector('.doodlejump-shop-action').click();
+
+        assert(saves > savesBefore, 'настройки сохранены');
+        assertEqual(shopBalance(root), 475, 'баланс на экране уменьшился на цену');
+        assertEqual(gameSkins().current, 'ufo', 'купленный скин надет в настройках');
+        assert(gameSkins().owned.includes('ufo'), 'и попал в купленные');
+        assert(shopItem(root, 'ufo').classList.contains('is-worn'), 'плитка перерисована надетой');
+    });
+
+    test('повторная покупка невозможна, купленный только надевается', () => {
+        // Возвращаемся на бесплатный — у купленного должно остаться «Надеть», а не «Купить».
+        shopItem(root, 'default').querySelector('.doodlejump-shop-action').click();
+        assertEqual(gameSkins().current, 'default', 'надет бесплатный');
+
+        const ufo = shopItem(root, 'ufo');
+        assertEqual(ufo.querySelector('.doodlejump-shop-note').textContent, 'Куплен', 'состояние «куплен»');
+        assertEqual(ufo.querySelector('.doodlejump-shop-action').textContent, 'Надеть', 'цену больше не просят');
+
+        ufo.querySelector('.doodlejump-shop-action').click();
+        assertEqual(shopBalance(root), 475, 'второй раз не списано');
+        assertEqual(gameSkins().current, 'ufo', 'скин надет');
+    });
+
+    test('на дорогой скин без монет покупка не проходит и баланс не меняется', () => {
+        getSettings().games.doodlejump.wallet.coins = 10;
+        root.querySelector('.doodlejump-shop-close').click();
+        root.querySelector('.doodlejump-shop-open').click();
+
+        assertEqual(shopBalance(root), 10, 'баланс перечитан');
+        shopItem(root, 'ghost').querySelector('.doodlejump-shop-action').click();
+        assertEqual(shopBalance(root), 10, 'монеты на месте');
+        assert(!gameSkins().owned.includes('ghost'), 'скин не выдан');
+    });
+
+    test('закрытие магазина возвращает игру', () => {
+        root.querySelector('.doodlejump-shop-close').click();
+        assertEqual(root.querySelector('.doodlejump-shop').style.display, 'none', 'магазин закрыт');
+        assertEqual(root.querySelector('.doodlejump-status').textContent, '', 'паузы больше нет');
+
+        frame();
+        const before = lastPlayerX();
+        frames(8);
+        assert(lastPlayerX() > before, 'фигурка снова едет вправо');
+        key('keyup', 'ArrowRight');
+    });
+
+    test('магазин открывается и с экрана проигрыша', () => {
+        key('keydown', 'ArrowRight');
+        const overlay = root.querySelector('.doodlejump-over');
+        let guard = 0;
+        while (overlay.style.display !== 'flex' && guard < 900) {
+            frame();
+            guard += 1;
+        }
+        key('keyup', 'ArrowRight');
+        assertEqual(overlay.style.display, 'flex', `заезд кончился (кадров: ${guard})`);
+
+        const openBtn = overlay.querySelector('.doodlejump-over-shop');
+        assert(openBtn, 'кнопка магазина на экране проигрыша');
+        openBtn.click();
+        assertEqual(root.querySelector('.doodlejump-shop').style.display, 'flex', 'магазин открыт поверх');
+
+        // Enter за спиной у витрины новый заезд не начинает.
+        const played = getSettings().games.doodlejump.stats.played;
+        key('keydown', 'Enter');
+        assertEqual(getSettings().games.doodlejump.stats.played, played, 'заезд не начат');
+
+        root.querySelector('.doodlejump-shop-close').click();
+        assertEqual(overlay.style.display, 'flex', 'экран проигрыша на месте');
+    });
+});
+
+// Скин, которого нет в реестре (переименовали, правили settings.json руками): отрисовка
+// обязана падать на бесплатный, а не ронять экран.
+getSettings().games.doodlejump.skins = { owned: ['default', 'нетакого'], current: 'нетакого' };
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    test('битый current падает на default, отрисовка не роняется', () => {
+        frame();
+        assert(root.querySelector('.doodlejump-canvas'), 'экран жив');
+        assert(lastPlayerX() !== null, 'фигурка нарисована формой по умолчанию');
+        frames(5);
+        assert(lastPlayerX() !== null, 'и продолжает рисоваться кадр за кадром');
+    });
+});
+
+getSettings().games.doodlejump.skins = { owned: ['default'], current: 'default' };
+
 // --- Панель настроек при открытом экране: настройки живые.
 
 await session({ gameId: 'doodlejump' }, async (root) => {

@@ -198,6 +198,15 @@ function createDoodleJumpScreen(root, api) {
     // (docs/plan-doodlejump-fixes.md §G.3). Открытый с экрана проигрыша, он этот экран
     // прячет (openShop) и возвращает при закрытии — накрыть его собой нельзя, витрина
     // на светопрозрачной палитре темы просвечивает.
+    // Пауза — плашка поверх поля, а не только строчка под кнопками: на снятых кадрах
+    // экран паузы отличался от идущей партии одной мелкой подписью внизу, и игрок этой
+    // разницы не видел.
+    const pausePlate = document.createElement('div');
+    pausePlate.className = 'doodlejump-pause';
+    pausePlate.textContent = 'Пауза';
+    pausePlate.style.display = 'none';
+    stage.appendChild(pausePlate);
+
     const shop = document.createElement('div');
     shop.className = 'doodlejump-shop';
     shop.style.display = 'none';
@@ -286,6 +295,9 @@ function createDoodleJumpScreen(root, api) {
     }
 
     function updateStatus() {
+        // Плашка живёт по тем же условиям, что и строка статуса, поэтому и обновляется
+        // здесь: не в витрине (там своя картинка), не после падения (там оверлей).
+        pausePlate.style.display = paused() && state.alive && !crashed && !shopOpen() ? 'flex' : 'none';
         if (crashed) {
             status.textContent = CRASH_STATUS;
         } else if (shopOpen()) {
@@ -613,7 +625,6 @@ function createDoodleJumpScreen(root, api) {
         // Собранное за заезд не пропадает: и монеты, и высота — игрок их набрал, ошибка
         // не его вина. record() сам зовёт cashOut() и защищён от повторной записи.
         record();
-        overlay.style.display = 'flex';
         const content = overlay.querySelector('.doodlejump-over-content');
         content.innerHTML = '<div>Что-то сломалось</div>'
             + `<div>Высота ${state.score}</div>`
@@ -623,6 +634,12 @@ function createDoodleJumpScreen(root, api) {
             restartBtn.blur();
             restart();
         });
+        // Витрина открыта — ведём себя как showOver() под витриной: оверлей не показываем
+        // (он оказался бы ПОД ней и запер бы экран), а помечаем, что его надо показать
+        // после закрытия. Выход есть в обе стороны: «Закрыть» вернёт оверлей краха, Enter
+        // начнёт новый заезд поверх витрины (restart() её закрывает сам).
+        if (shopOpen()) overBeforeShop = true;
+        else overlay.style.display = 'flex';
         updateStatus();
     }
 
@@ -706,8 +723,9 @@ function createDoodleJumpScreen(root, api) {
         },
         onRestart: () => {
             // После остановки по ошибке Enter — единственный выход, поэтому он работает
-            // независимо от того, жива ли партия.
-            if (!(crashed || !state.alive) || shopOpen()) return false;
+            // и при живой партии, и поверх открытой витрины (restart() её закрывает).
+            // Без краха витрина Enter не пропускает: начинать заезд за её спиной незачем.
+            if (!crashed && (state.alive || shopOpen())) return false;
             restart();
             return true;
         },

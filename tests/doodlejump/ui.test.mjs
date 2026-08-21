@@ -1348,8 +1348,66 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         assertEqual(errors.length, 0, 'и без новых ошибок');
     });
 
+    // Крах при открытой витрине показывал оверлей ПОД ней и запирал экран: Enter не
+    // работал, а «Закрыть» оверлей уже не возвращало (docs/plan-doodlejump-fixes.md §O.4).
+    test('крах при открытой витрине не запирает экран', () => {
+        errors.length = 0;
+        root.querySelector('.doodlejump-shop-open').click();
+
+        // Ломаем шапку, а не отрисовку: под витриной кадры не рисуются вовсе, и сломать
+        // игру через canvas в этот момент нельзя.
+        const scoreEl = root.querySelector('.doodlejump-header span');
+        Object.defineProperty(scoreEl, 'textContent', {
+            configurable: true,
+            get: () => '',
+            set() { throw new Error('тестовый сбой шапки'); },
+        });
+        frames(6);
+        delete scoreEl.textContent;
+
+        assertEqual(errors.length, 5, 'серия оборвалась по лимиту');
+        assertEqual(overlay.style.display, 'none', 'оверлей не показан под витриной');
+
+        root.querySelector('.doodlejump-shop-close').click();
+        assertEqual(overlay.style.display, 'flex', 'после закрытия витрины оверлей краха на месте');
+        assert(overlay.textContent.includes('Что-то сломалось'), 'и это именно он');
+
+        key('keydown', 'Enter');
+        assertEqual(overlay.style.display, 'none', 'Enter поднял игру');
+        const pass = mock2d.pass;
+        frames(3);
+        assert(mock2d.pass > pass, 'кадры снова идут');
+    });
+
     console.error = realError;
     mock2d.clearRect = goodClear;
+});
+
+// Пауза видна на самом поле, а не только строкой под кнопками (§O.1).
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    const plate = root.querySelector('.doodlejump-pause');
+
+    test('пауза показывает плашку поверх поля', () => {
+        assert(plate, 'плашка в разметке');
+        frame();
+        assertEqual(plate.style.display, 'none', 'в идущей партии её нет');
+
+        key('keydown', ' ');
+        frame();
+        assertEqual(plate.style.display, 'flex', 'на паузе она видна');
+        assertEqual(plate.textContent, 'Пауза', 'и говорит, что случилось');
+
+        key('keydown', ' ');
+        frame();
+        assertEqual(plate.style.display, 'none', 'снятая пауза убирает плашку');
+    });
+
+    test('витрина плашку паузы не показывает — там своя картинка', () => {
+        root.querySelector('.doodlejump-shop-open').click();
+        assertEqual(plate.style.display, 'none', 'под витриной плашки нет');
+        root.querySelector('.doodlejump-shop-close').click();
+    });
 });
 
 // --- createDrag напрямую: арифметика намерения и снятие слушателей.

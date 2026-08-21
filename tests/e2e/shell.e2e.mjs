@@ -17,7 +17,10 @@ export default async function run(env) {
     await e2eTest(env, 'хаб открывается из wand-меню и показывает все игры', async () => {
         await openHub(page);
         const ids = await page.$$eval('.stg-tile', (tiles) => tiles.map((t) => t.dataset.gameId));
-        for (const id of ['sudoku', 'snake', 'reversi', 'words', 'minesweeper', 'nonogram', 'crossword', 'balda']) {
+        const expected = [
+            'sudoku', 'snake', 'reversi', 'words', 'minesweeper', 'nonogram', 'crossword', 'balda', 'doodlejump',
+        ];
+        for (const id of expected) {
             assert(ids.includes(id), `в хабе нет игры ${id}, только: ${ids.join(', ')}`);
         }
         await closeShell(page);

@@ -194,6 +194,7 @@ const GAME_ROOTS = Object.freeze({
     // Балда грузит словарь динамическим import(): корень появляется сразу, а поле —
     // после загрузки, поэтому ждём именно поле (см. src/games/balda/ui/game.js).
     balda: '.balda-board',
+    doodlejump: '.doodlejump-canvas',
 });
 
 export async function openGame(page, id) {

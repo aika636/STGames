@@ -504,6 +504,71 @@ export default async function run(env) {
 
         await closeShell(page);
     });
+
+    await e2eTest(env, 'дудл джамп: зажатая стрелка двигает фигурку, падение и рестарт по Enter', async () => {
+        await resetSettings(page);
+        await openHub(page);
+        await openGame(page, 'doodlejump');
+
+        const canvas = page.locator('.doodlejump-canvas');
+        assertEqual(await canvas.count(), 1, 'нет канваса дудл джампа');
+        // Поле портретное и держится на aspect-ratio/clamp по высоте окна — в jsdom
+        // размеров нет вовсе, так что проверить это можно только здесь.
+        const box = await canvas.boundingBox();
+        assert(box && box.width > 0 && box.height > 0, 'канвас дудл джампа нулевого размера');
+        assert(box.height > box.width, `поле не портретное: ${box.width}×${box.height}`);
+
+        // Игра паузится при потере фокуса окном — кликаем внутрь поля, иначе в
+        // headless-браузере заезд может не начаться вовсе (та же страховка, что у змейки).
+        await canvas.click({ position: { x: 5, y: 5 } });
+
+        // Зажатая (не нажатая) стрелка — вся суть управления этой игры: направление
+        // держится, пока клавиша внизу. Признак того, что цикл крутится, — снимок
+        // канваса, меняющийся между кадрами; счёт для этого не годится, он растёт
+        // только выше прежнего максимума.
+        const before = await canvasSignature(page, '.doodlejump-canvas');
+        await page.keyboard.down('ArrowRight');
+        await page.waitForFunction(
+            (snapshot) => {
+                const el = document.querySelector('.doodlejump-canvas');
+                return Boolean(el) && el.toDataURL().slice(0, 256) !== snapshot;
+            },
+            before,
+            { timeout: 10_000 },
+        );
+
+        // Едем вбок, пока не промахнёмся мимо платформ и не улетим ниже экрана: падение
+        // и оверлей — настоящий игровой цикл на rAF, без подменённых таймеров.
+        await page.waitForSelector('.doodlejump-over-content .doodlejump-over-restart', { timeout: 60_000 });
+        await page.keyboard.up('ArrowRight');
+        assert(
+            (await page.locator('.doodlejump-status').textContent()).includes('Enter'),
+            'строка статуса после падения не зовёт нажать Enter',
+        );
+
+        // Рестарт с клавиатуры: оверлей уходит, счёт начинается заново.
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(
+            () => document.querySelector('.doodlejump-over')?.style.display === 'none',
+            null,
+            { timeout: 10_000 },
+        );
+        assertEqual(await page.locator('.doodlejump-status').textContent(), '', 'после рестарта осталась строка падения');
+
+        // Стрелки не должны уезжать в чат — тот же риск capture-фазы, что у судоку и
+        // змейки, только здесь на document висит ещё и keyup.
+        const chat = await page.inputValue('#send_textarea').catch(() => '');
+        assertEqual(chat, '', 'стрелки ушли в поле ввода чата');
+
+        await closeShell(page);
+        await flushSettings(page);
+
+        // Партия не сохраняется (как у змейки) — в настройках живут только рекорды,
+        // и «сыграно» растёт с каждого старта: открытие плюс рестарт дают два.
+        const settings = (await readSettings(page)).games?.doodlejump;
+        assertEqual(settings?.savedGame ?? null, null, 'заезд дудл джампа зачем-то сохранился');
+        assert(settings?.stats?.played >= 2, `«сыграно» не выросло на старте и рестарте: ${settings?.stats?.played}`);
+    });
 }
 
 // Слово из словаря разрешённых с повтором буквы: заодно проверяем, что раскраска
@@ -516,8 +581,13 @@ function typedRow(page) {
     return page.locator('.words-row').first().textContent();
 }
 
-function canvasSignature(page) {
-    return page.evaluate(() => document.querySelector('.snake-canvas')?.toDataURL().slice(0, 256) ?? '');
+// Снимок канваса: первые 256 символов data-URL. Годится ровно на «картинка изменилась»,
+// то есть «цикл живой» — сравнивать полные изображения ни к чему.
+function canvasSignature(page, selector = '.snake-canvas') {
+    return page.evaluate(
+        (sel) => document.querySelector(sel)?.toDataURL().slice(0, 256) ?? '',
+        selector,
+    );
 }
 
 // --- Кроссворд

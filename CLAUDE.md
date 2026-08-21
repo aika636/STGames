@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **STGames** — клиентское UI-расширение SillyTavern: платформа мини-игр с хабом, из которого
 игры открываются в модальном окне поверх чата. Сейчас в каталоге судоку, змейка, реверси,
 слова (русский вордл), сапёр, нонограмма (японский кроссворд), кроссворд (скелет:
-разложить банк слов по сетке) и балда; как добавить свою игру — `docs/games.md`. LLM в играх **не участвует**, `ctx.chat` не читается
+разложить банк слов по сетке), балда и дудл джамп (аркадный прыгун на canvas);
+как добавить свою игру — `docs/games.md`. LLM в играх **не участвует**, `ctx.chat` не читается
 и не пишется, сетевых вызовов нет. Точки соприкосновения с ST — кнопка в wand-меню, попап
 и `extensionSettings` (настройки, партии, статистика).
 
@@ -39,7 +40,7 @@ src/shell/       # оболочка: modal (попап и сессия), hub (с
                  # settings-ui (общая панель настроек), appearance (палитра окна:
                  # light/dark/theme/auto, атрибут data-stg-theme на .stg-root)
 src/games/       # по папке на игру: sudoku/, snake/, reversi/, words/, minesweeper/,
-                 # nonogram/, crossword/, balda/ — внутри core/
+                 # nonogram/, crossword/, balda/, doodlejump/ — внутри core/
                  # (чистая логика) и ui/ (DOM); у words/, crossword/ и balda/ ещё data/ —
                  # словари и пул головоломок, они грузятся динамическим import()
                  # и собираются офлайн tools/; у nonogram/data/ — банк рисунков
@@ -48,7 +49,8 @@ src/games/       # по папке на игру: sudoku/, snake/, reversi/, wor
 tests/           # node-тесты; ядро — без зависимостей, UI — под jsdom (_harness.mjs)
 tests/e2e/       # e2e под Playwright в живой ST: _st.mjs (обвязка), run.mjs, *.e2e.mjs
 style.css        # стили, префиксы .stg-, .sudoku-, .snake-, .reversi-, .words-,
-                 # .minesweeper-, .nonogram-, .crossword-, .balda-; общий слой цветов
+                 # .minesweeper-, .nonogram-, .crossword-, .balda-, .doodlejump-;
+                 # общий слой цветов
                  # --stg-* в блоке «Палитра» — игры берут цвета только оттуда
 tools/           # офлайн-скрипты, в расширение не входят: build-dictionary.mjs
                  # (словари «Слов», кроссворда и балды), build-crossword.mjs
@@ -75,6 +77,7 @@ node tests/run.mjs minesweeper # фильтр: только сапёр
 node tests/run.mjs nonogram    # фильтр: только нонограмма
 node tests/run.mjs crossword   # фильтр: только кроссворд
 node tests/run.mjs balda       # фильтр: только балда
+node tests/run.mjs doodlejump  # фильтр: только дудл джамп
 STGAMES_ST_DIR=<путь к ST> node tests/e2e/run.mjs   # e2e в живой таверне под Playwright
 ./deploy.sh               # залить на тестовый ST + хардрелоад вкладки
 ```
@@ -96,7 +99,7 @@ STGAMES_ST_DIR=<путь к ST> node tests/e2e/run.mjs   # e2e в живой т�
 
 - Namespace: `MODULE_NAME = 'STGames'`, CSS-классы с префиксами `stg-` (оболочка и хаб),
   `sudoku-`, `snake-`, `reversi-`, `words-`, `minesweeper-`, `nonogram-`, `crossword-`,
-  `balda-` (игры), настройки в `ctx.extensionSettings.STGames`
+  `balda-`, `doodlejump-` (игры), настройки в `ctx.extensionSettings.STGames`
   (camelCase `extensionSettings`, не `extension_settings`).
 - Настройки: замороженные дефолты в `game.defaults` + мерж недостающих ключей при чтении;
   ключи верхнего уровня STGames (`version`/`lastGame`/`appearance`/`games`) правит только

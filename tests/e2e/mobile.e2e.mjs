@@ -19,7 +19,8 @@ const VIEWPORTS = Object.freeze([
 ]);
 
 // Доска игры и признак «обязана быть квадратной». Змейка — канвас (квадрат держит сама
-// игра), «слова» — сетка 5×6, квадратом быть не должна.
+// игра), «слова» — сетка 5×6, квадратом быть не должна, дудл джамп — портретный канвас
+// 5:8 (у него вместо квадрата своя проверка пропорции ниже).
 const GAMES = Object.freeze([
     { id: 'sudoku', board: '.sudoku-board', square: true },
     { id: 'snake', board: '.snake-canvas', square: true },
@@ -29,6 +30,7 @@ const GAMES = Object.freeze([
     { id: 'nonogram', board: '.nonogram-board', square: true },
     { id: 'crossword', board: '.crossword-board', square: true },
     { id: 'balda', board: '.balda-board', square: true },
+    { id: 'doodlejump', board: '.doodlejump-canvas', square: false, portrait: 5 / 8 },
 ]);
 
 // Минимальный тыкаемый размер: 24 CSS-пикселя — нижняя граница WCAG 2.2 (2.5.8).
@@ -81,6 +83,17 @@ async function runViewport(outer, viewport) {
                     assert(
                         Math.abs(m.board.w - m.board.h) <= 2,
                         `${game.id}: доска не квадратная — ${Math.round(m.board.w)}×${Math.round(m.board.h)}`,
+                    );
+                }
+                if (game.portrait) {
+                    // Поле держится на aspect-ratio и clamp по высоте окна: и в портрете,
+                    // и в ландшафте пропорция обязана остаться той же, иначе мир
+                    // растянется и физика разойдётся с картинкой.
+                    const ratio = m.board.w / m.board.h;
+                    assert(
+                        Math.abs(ratio - game.portrait) <= 0.02,
+                        `${game.id}: пропорция поля уехала — ${Math.round(m.board.w)}×${Math.round(m.board.h)}`
+                        + ` (${ratio.toFixed(3)} вместо ${game.portrait.toFixed(3)})`,
                     );
                 }
                 assertFits(m, game.id);

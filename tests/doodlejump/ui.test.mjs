@@ -67,7 +67,16 @@ Object.defineProperty(mock2d, 'strokeStyle', { set(v) { this.stroke_ = v; }, con
 for (const prop of ['lineWidth', 'globalAlpha']) {
     Object.defineProperty(mock2d, prop, { set() {}, configurable: true });
 }
-window.HTMLCanvasElement.prototype.getContext = () => mock2d;
+// Заодно запоминаем, висел ли канвас уже в дереве экрана, когда у него просили контекст:
+// превью в витрине берут цвета через getComputedStyle, а на узле, ещё не подшитом к
+// .stg-root, палитра пуста — картинка молча уходила бы на литеральные фолбэки (на светлой
+// теме снежинка на белом почти пропадала). isConnected для этого не годится: харнесс
+// монтирует экран в отсоединённый корень, и там false у всех.
+const contextRequests = [];
+window.HTMLCanvasElement.prototype.getContext = function getContextStub() {
+    contextRequests.push({ canvas: this, attached: !!this.closest?.('.doodlejump-root') });
+    return mock2d;
+};
 
 // Цикл игры — requestAnimationFrame; в jsdom его неоткуда крутить, поэтому собираем
 // колбэки в массив и шагаем вручную с фиктивным временем.
@@ -568,7 +577,7 @@ const { SKINS: SKIN_REGISTRY, getSkin: lookupSkin, resolveColors: resolveSkinCol
 const { DEFAULT_SKIN } = await import('../../src/games/doodlejump/core/wallet.js');
 
 test('реестр скинов: id и названия уникальны, цены целые, палитра с фолбэком', () => {
-    assert(SKIN_REGISTRY.length === 8, `скинов в реестре: ${SKIN_REGISTRY.length}`);
+    assert(SKIN_REGISTRY.length === 12, `скинов в реестре: ${SKIN_REGISTRY.length}`);
     assertEqual(new Set(SKIN_REGISTRY.map((s) => s.id)).size, SKIN_REGISTRY.length, 'id уникальны');
     assertEqual(new Set(SKIN_REGISTRY.map((s) => s.title)).size, SKIN_REGISTRY.length, 'названия уникальны');
 
@@ -703,8 +712,14 @@ await session({ gameId: 'doodlejump' }, async (root) => {
             SKIN_REGISTRY.length,
             'на витрине все скины реестра',
         );
-        assertEqual(root.querySelectorAll('.doodlejump-shop-item').length, 8, 'восемь плиток скинов');
+        assertEqual(root.querySelectorAll('.doodlejump-shop-item').length, 12, 'двенадцать плиток скинов');
         assert(root.querySelector('.doodlejump-shop-preview'), 'превью рисуется на канвасе');
+        // Превью должны рисоваться, когда витрина уже в документе: иначе getComputedStyle
+        // отдаёт пустую палитру и все скины уходят на фолбэки — на светлой теме снежинка
+        // на белом почти пропадала.
+        const previews = contextRequests.filter((r) => r.canvas.classList.contains('doodlejump-shop-preview'));
+        assert(previews.length > 0, 'у превью просили контекст');
+        assert(previews.every((r) => r.attached), 'и каждый раз канвас уже висел в дереве экрана');
 
         frames(10);
         assertClose2(lastPlayerX(), before, 0.001, 'пока магазин открыт, фигурка стоит');

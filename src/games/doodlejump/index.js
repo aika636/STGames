@@ -351,6 +351,8 @@ function createDoodleJumpScreen(root, api) {
 
         const items = document.createElement('div');
         items.className = 'doodlejump-shop-items';
+        // Превью копятся здесь и рисуются в конце, когда витрина уже в документе.
+        const pending = [];
         for (const skin of SKINS) {
             const isOwned = owned.includes(skin.id);
             const isWorn = skin.id === current;
@@ -408,9 +410,11 @@ function createDoodleJumpScreen(root, api) {
 
             item.append(preview, name, note, btn);
             items.appendChild(item);
-            // Рисовать после вставки в документ: цвета берутся из палитры .stg-root
-            // через getComputedStyle, а вне дерева наследовать их неоткуда.
-            drawPreview(preview, skin);
+            // Рисовать сейчас нельзя: плитка пока висит в отсоединённом поддереве, а цвета
+            // берутся из палитры .stg-root через getComputedStyle — вне документа она
+            // отдаёт пустые значения, и превью молча ушло бы на литеральные фолбэки
+            // (на светлой теме это видно сразу: снежинка на белом почти пропадала).
+            pending.push([preview, skin]);
         }
         content.appendChild(items);
 
@@ -424,6 +428,8 @@ function createDoodleJumpScreen(root, api) {
         content.appendChild(close);
 
         shop.appendChild(content);
+        // Теперь плитки в документе и палитра до них доехала — можно рисовать.
+        for (const [canvas, skin] of pending) drawPreview(canvas, skin);
     }
 
     function openShop() {

@@ -568,6 +568,51 @@ test('подобранный предмет больше не подбирает
     assertEqual(res.boosted, null, 'второй раз тот же предмет не срабатывает');
 });
 
+// Монета в подшаге смерти не засчитывается: заезд в этот момент уже кончился, а монета
+// прилетала бы в кошелёк за него (docs/plan-doodlejump-fixes.md §N, попутно к пункту 24).
+test('в подшаге падения монета уже не начисляется', () => {
+    const state = bareState();
+    // Уводим фигурку ниже нижнего края экрана и кладём монету ровно на неё.
+    state.player.y = state.cameraY + state.world.h + 1;
+    state.pickups = [{ id: 1, kind: 'coin', x: state.player.x, y: state.player.y, w: PICKUP_W }];
+    const coinsBefore = state.coins;
+
+    const res = stepOnce(state);
+    assertEqual(res.fell, true, 'падение зафиксировано');
+    assertEqual(state.alive, false, 'заезд кончился');
+    assertEqual(res.coins, 0, 'монета в этот подшаг не засчитана');
+    assertEqual(state.coins, coinsBefore, 'и счётчик заезда не вырос');
+});
+
+// Пролетающий мимо бустер не подменяет активный. Раньше проверка была только на два
+// подбора в одном подшаге, а цикл работал и во время полёта: ракета, пролетая сквозь
+// пропеллер, теряла 44 % скорости — «ракета сломалась» (docs/plan-doodlejump-fixes.md §N).
+test('на ракете пропеллер не подбирается, а остаётся лежать', () => {
+    const state = withPickup('rocket');
+    stepOnce(state);
+    assertEqual(state.player.boost.kind, 'rocket', 'летим на ракете');
+    const msAfterPickup = state.player.boost.msLeft;
+
+    // Пропеллер ровно там, где сейчас фигурка: без правки он бы её и перехватил.
+    const propeller = { id: 2, kind: 'propeller', x: state.player.x, y: state.player.y, w: PICKUP_W };
+    state.pickups.push(propeller);
+    const res = stepOnce(state);
+
+    assertEqual(res.boosted, null, 'подбора не было');
+    assertEqual(state.player.boost.kind, 'rocket', 'ракета осталась ракетой');
+    assertEqual(state.player.boost.vy, BOOST.rocket.vy, 'и скорость её же');
+    assert(state.player.boost.msLeft < msAfterPickup, 'остаток полёта только убывает');
+    assertEqual(propeller.taken, undefined, 'предмет не помечен взятым — он лежит дальше');
+
+    // Полёт кончился — предмет подбирается как обычно.
+    state.player.boost = null;
+    state.player.x = propeller.x;
+    state.player.y = propeller.y;
+    const after = stepOnce(state);
+    assertEqual(after.boosted, 'propeller', 'после полёта предмет берётся');
+    assertEqual(propeller.taken, true, 'и вот теперь он взят');
+});
+
 test('во время полёта платформы не ловят — фигурка идёт сквозь', () => {
     const state = withPickup('rocket');
     stepOnce(state);

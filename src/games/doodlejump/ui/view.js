@@ -16,13 +16,18 @@
 // понимает — вместо цвета вышел бы прозрачный чёрный.
 
 import { BOOST, PICKUP_H, PICKUP_W, PLATFORM_H, PLAYER_H, PLAYER_W, WORLD_W } from '../core/engine.js';
+import { DEFAULT_SKIN } from '../core/wallet.js';
+import { fillBox, getSkin, resolveColors } from './skins.js';
 
 // Фолбэки размера — только для jsdom и для первого кадра до раскладки: в браузере
 // clientWidth/clientHeight приходят из CSS (.doodlejump-stage задаёт aspect-ratio).
 const FALLBACK_W = 320;
 const FALLBACK_H = 512;
 
-export function createView() {
+// options.getSkinId — откуда брать надетый скин (обычно readSkins(settings).current).
+// Функция, а не значение: скин меняют в магазине, не пересоздавая экран.
+export function createView(options = {}) {
+    const getSkinId = typeof options.getSkinId === 'function' ? options.getSkinId : () => DEFAULT_SKIN;
     const root = document.createElement('div');
     root.className = 'doodlejump-view';
     const canvas = document.createElement('canvas');
@@ -32,19 +37,6 @@ export function createView() {
     let ctx2d = null;
     let lastW = 0;
     let lastH = 0;
-
-    // Скруглённый прямоугольник там, где браузер это умеет, и обычный там, где нет
-    // (в том числе в jsdom-заглушке 2d-контекста): форма фигурки — украшение, а не
-    // геометрия, и ветвиться на неё дешевле, чем тянуть свой путь из дуг.
-    function fillBox(x, y, w, h, radius) {
-        if (typeof ctx2d.roundRect === 'function') {
-            ctx2d.beginPath();
-            ctx2d.roundRect(x, y, w, h, radius);
-            ctx2d.fill();
-            return;
-        }
-        ctx2d.fillRect(x, y, w, h);
-    }
 
     // Пружинка над платформой — зигзаг в четыре звена: рисуется нейтральным цветом
     // платформы, а не своим, чтобы читаться и на жёлтой пружине, и на любой теме.
@@ -76,27 +68,10 @@ export function createView() {
         ctx2d.stroke();
     }
 
-    function drawPlayer(px, py, facing, scale, bodyColor, eyeColor) {
-        const w = PLAYER_W * scale;
-        const h = PLAYER_H * scale;
-        const x = px * scale;
-        const y = py * scale;
-
-        ctx2d.fillStyle = bodyColor;
-        fillBox(x, y, w, h, Math.min(w, h) * 0.3);
-
-        // «Глаза» смотрят по facing — единственная деталь, дающая ощущение направления
-        // без спрайтов. Точки, а не зрачки: на 40 wu ширины больше и не читалось бы.
-        const r = w * 0.09;
-        const eyeY = y + h * 0.34;
-        const near = facing < 0 ? x + w * 0.24 : x + w * 0.6;
-        const far = facing < 0 ? x + w * 0.44 : x + w * 0.8;
-        ctx2d.fillStyle = eyeColor;
-        for (const cx of [near, far]) {
-            ctx2d.beginPath();
-            ctx2d.arc(cx, eyeY, r, 0, Math.PI * 2);
-            ctx2d.fill();
-        }
+    // Фигурку рисует надетый скин (ui/skins.js): форма и цвета — его дело, экран знает
+    // только габарит PLAYER_W × PLAYER_H и направление взгляда.
+    function drawPlayer(px, py, facing, scale, skin, colors) {
+        skin.draw(ctx2d, px * scale, py * scale, PLAYER_W * scale, PLAYER_H * scale, facing, colors);
     }
 
     // Бустеры — теми же примитивами, что и всё остальное. Пропеллер: тельце и лопасть
@@ -107,13 +82,13 @@ export function createView() {
         const h = PICKUP_H * scale;
         ctx2d.fillStyle = color;
         if (kind === 'rocket') {
-            fillBox(x + w * 0.3, top, w * 0.4, h * 0.75, w * 0.2);
+            fillBox(ctx2d, x + w * 0.3, top, w * 0.4, h * 0.75, w * 0.2);
             ctx2d.fillRect(x + w * 0.42, top + h * 0.75, w * 0.16, h * 0.25);
             ctx2d.fillRect(x + w * 0.1, top + h * 0.45, w * 0.15, h * 0.3);
             ctx2d.fillRect(x + w * 0.75, top + h * 0.45, w * 0.15, h * 0.3);
             return;
         }
-        fillBox(x + w * 0.35, top + h * 0.3, w * 0.3, h * 0.7, w * 0.15);
+        fillBox(ctx2d, x + w * 0.35, top + h * 0.3, w * 0.3, h * 0.7, w * 0.15);
         ctx2d.fillRect(x, top + h * 0.15, w, Math.max(1, h * 0.12));
     }
 
@@ -184,8 +159,10 @@ export function createView() {
         // Фолбэки — на случай, если style.css почему-то не загрузился: без них canvas
         // получил бы пустую строку и не нарисовал вообще ничего.
         const pick = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
-        const playerColor = pick('--stg-doodlejump-player', '#6ca0dc');
-        const eyeColor = pick('--stg-doodlejump-player-eye', '#14161b');
+        // Скин перечитывается каждый кадр: его меняют в магазине, не пересоздавая экран.
+        // Битый id (скина нет в реестре) getSkin() сам приводит к бесплатному.
+        const skin = getSkin(getSkinId());
+        const skinColors = resolveColors(skin, pick);
         const platformColor = pick('--stg-doodlejump-platform', '#888');
         const movingColor = pick('--stg-doodlejump-platform-moving', '#7fae5a');
         const crumblingColor = pick('--stg-doodlejump-platform-crumbling', '#b58a4a');
@@ -214,7 +191,7 @@ export function createView() {
             // Сломанная платформа остаётся видимой, но блёклой: игрок должен понимать,
             // что под ногами уже не опора.
             ctx2d.globalAlpha = platform.broken ? 0.35 : 1;
-            fillBox(px, top, pw, platformH, platformH * 0.4);
+            fillBox(ctx2d, px, top, pw, platformH, platformH * 0.4);
             ctx2d.globalAlpha = 1;
             if (platform.broken) drawCracks(px, top, pw, platformH, crumblingColor);
             else if (platform.kind === 'spring') drawSpring(px, top, pw, scale, platformColor);
@@ -240,14 +217,14 @@ export function createView() {
 
         const player = state.player;
         const py = player.y - cameraY;
-        drawPlayer(player.x, py, player.facing, scale, playerColor, eyeColor);
+        drawPlayer(player.x, py, player.facing, scale, skin, skinColors);
         // Wrap-копия у противоположного края: ядро (overlapsX) считает фигурку, свисающую
         // за правый край, стоящей и слева тоже — отрисовка обязана показывать то же
         // самое, иначе прыжок «из воздуха» выглядел бы багом.
         if (player.x + PLAYER_W > WORLD_W) {
-            drawPlayer(player.x - WORLD_W, py, player.facing, scale, playerColor, eyeColor);
+            drawPlayer(player.x - WORLD_W, py, player.facing, scale, skin, skinColors);
         } else if (player.x < 0) {
-            drawPlayer(player.x + WORLD_W, py, player.facing, scale, playerColor, eyeColor);
+            drawPlayer(player.x + WORLD_W, py, player.facing, scale, skin, skinColors);
         }
 
         if (player.boost) {

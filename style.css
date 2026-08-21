@@ -240,8 +240,8 @@
  *                        их читает JS через getComputedStyle, а color-mix в значении
  *                        пользовательского свойства до JS доезжает неразобранным.
  *   --stg-doodlejump-*   цвета канваса «Дудл Джампа» (фигурка, её глаза, типы платформ,
- *                        бустеры, монеты) — то же ограничение, что у --stg-snake-*: только
- *                        литералы и var().
+ *                        бустеры, монеты, скины) — то же ограничение, что у --stg-snake-*:
+ *                        только литералы и var().
  *
  * Значения по умолчанию — режим theme: ровно то, что было до появления палитры.
  */
@@ -284,6 +284,9 @@
     --stg-doodlejump-propeller: #7bc6c6;
     --stg-doodlejump-rocket: #d1603d;
     --stg-doodlejump-coin: #e0b84d;
+    --stg-doodlejump-skin-ufo: #a8b0c0;
+    --stg-doodlejump-skin-ufo-dome: #8fe0d0;
+    --stg-doodlejump-skin-ghost: #d9d6e8;
 }
 
 /* Тёмная палитра. Не «тема ST потемнее», а свой набор: фон окна чуть светлее чёрного,
@@ -318,6 +321,9 @@
     --stg-doodlejump-propeller: #7bc6c6;
     --stg-doodlejump-rocket: #d1603d;
     --stg-doodlejump-coin: #e0b84d;
+    --stg-doodlejump-skin-ufo: #b6bfd0;
+    --stg-doodlejump-skin-ufo-dome: #8fe0d0;
+    --stg-doodlejump-skin-ghost: #dcd9ec;
 }
 
 /* Светлая палитра. Поле белое, а подложка окна — тёплый серый: белое поле на белом окне
@@ -351,6 +357,9 @@
     --stg-doodlejump-propeller: #2f7d7d;
     --stg-doodlejump-rocket: #a83c1c;
     --stg-doodlejump-coin: #a8801a;
+    --stg-doodlejump-skin-ufo: #5f6a80;
+    --stg-doodlejump-skin-ufo-dome: #2f8f7d;
+    --stg-doodlejump-skin-ghost: #5b5878;
 }
 
 /* Своя палитра — своя подложка: без неё шапка окна и подписи остались бы цветом темы ST
@@ -1112,6 +1121,72 @@
     align-items: center;
     gap: 6px;
     text-align: center;
+}
+
+/* Кнопка магазина стоит в одном ряду со счётом — поэтому мельче обычной menu_button:
+   шапка не должна разъезжаться на узком экране. */
+.doodlejump-shop-open {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    font-size: 0.85em;
+}
+
+/* Магазин скинов — второй оверлей на той же сцене. Фон плотнее, чем у оверлея падения:
+   он открывается и поверх него, и витрина не должна просвечивать счётом заезда. */
+.doodlejump-shop {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    border-radius: 10px;
+    background-color: rgba(0, 0, 0, 0.88);
+    background-color: color-mix(in srgb, var(--stg-surface) 96%, var(--stg-bg));
+    color: var(--stg-fg);
+}
+
+.doodlejump-shop-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    text-align: center;
+}
+
+.doodlejump-shop-items {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: center;
+    gap: 8px;
+}
+
+.doodlejump-shop-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--stg-line);
+    border-radius: 8px;
+    background-color: var(--stg-tint-soft);
+}
+
+/* Надетый скин обведён акцентом: «состояние» видно раньше, чем прочитана подпись. */
+.doodlejump-shop-item.is-worn {
+    border-color: var(--stg-accent);
+}
+
+.doodlejump-shop-preview {
+    width: 72px;
+    height: 72px;
+}
+
+.doodlejump-shop-note {
+    font-size: 0.85em;
+    opacity: 0.75;
 }
 
 .doodlejump-status {

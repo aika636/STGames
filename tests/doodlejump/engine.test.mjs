@@ -13,7 +13,7 @@ import {
     EMPTY_ENTRY, readStats, recordPlayed, recordResult, resetStats,
 } from '../../src/games/doodlejump/core/stats.js';
 import {
-    DEFAULT_SKIN, addCoins, readSkins, readWallet,
+    DEFAULT_SKIN, addCoins, buySkin, readSkins, readWallet, wearSkin,
 } from '../../src/games/doodlejump/core/wallet.js';
 import { assert, assertEqual, report, test } from '../_harness.mjs';
 
@@ -809,6 +809,65 @@ test('скины нормализуются: default не теряется, curr
     const ok = readSkins({ skins: { owned: ['ninja', 'ninja', '', 7], current: 'ninja' } });
     assertEqual(JSON.stringify(ok.owned), JSON.stringify([DEFAULT_SKIN, 'ninja']), 'повторы и мусор убраны');
     assertEqual(ok.current, 'ninja', 'купленный скин выбран');
+});
+
+// --- Магазин: покупка и надевание (docs/plan-doodlejump-fixes.md §G.3) ---------------
+
+test('не хватает монет — покупка не проходит и кошелёк не меняется', () => {
+    const settings = { wallet: { coins: 10 }, skins: { owned: [DEFAULT_SKIN], current: DEFAULT_SKIN } };
+    const res = buySkin(settings, 'ufo', 25);
+    assertEqual(res.ok, false, 'покупка не прошла');
+    assertEqual(res.reason, 'poor', 'причина — не хватает монет');
+    assertEqual(readWallet(settings).coins, 10, 'кошелёк не тронут');
+    assertEqual(JSON.stringify(readSkins(settings).owned), JSON.stringify([DEFAULT_SKIN]), 'скин не выдан');
+    assertEqual(readSkins(settings).current, DEFAULT_SKIN, 'надет прежний');
+});
+
+test('купленный скин списывает цену, попадает в owned и надевается', () => {
+    const settings = { wallet: { coins: 30 }, skins: { owned: [DEFAULT_SKIN], current: DEFAULT_SKIN } };
+    const res = buySkin(settings, 'ufo', 25);
+    assertEqual(res.ok, true, 'покупка прошла');
+    assertEqual(res.coins, 5, 'цена списана');
+    assertEqual(res.current, 'ufo', 'покупают, чтобы носить');
+    assertEqual(readWallet(settings).coins, 5, 'кошелёк в настройках');
+    assertEqual(JSON.stringify(readSkins(settings).owned), JSON.stringify([DEFAULT_SKIN, 'ufo']), 'скин куплен');
+    assertEqual(readSkins(settings).current, 'ufo', 'скин надет');
+});
+
+test('повторная покупка не списывает второй раз', () => {
+    const settings = { wallet: { coins: 100 }, skins: { owned: [DEFAULT_SKIN], current: DEFAULT_SKIN } };
+    buySkin(settings, 'ufo', 25);
+    assertEqual(readWallet(settings).coins, 75, 'первая покупка списала цену');
+
+    const again = buySkin(settings, 'ufo', 25);
+    assertEqual(again.ok, false, 'вторая покупка не проходит');
+    assertEqual(again.reason, 'owned', 'причина — уже куплен');
+    assertEqual(readWallet(settings).coins, 75, 'кошелёк тот же');
+    assertEqual(readSkins(settings).owned.filter((id) => id === 'ufo').length, 1, 'в списке один раз');
+});
+
+test('надеть можно только купленное, а результат — итоговый current', () => {
+    const settings = { wallet: { coins: 100 }, skins: { owned: [DEFAULT_SKIN], current: DEFAULT_SKIN } };
+    assertEqual(wearSkin(settings, 'ghost'), DEFAULT_SKIN, 'некупленный не надевается');
+
+    buySkin(settings, 'ghost', 60);
+    assertEqual(wearSkin(settings, DEFAULT_SKIN), DEFAULT_SKIN, 'бесплатный надевается обратно');
+    assertEqual(wearSkin(settings, 'ghost'), 'ghost', 'купленный надевается без повторной оплаты');
+    assertEqual(readWallet(settings).coins, 40, 'переодевание бесплатно');
+    assertEqual(wearSkin(settings, 42), 'ghost', 'мусорный id игнорируется');
+});
+
+test('битые настройки чинятся покупкой, а не роняют её', () => {
+    const settings = { wallet: 'нет', skins: 'нет' };
+    assertEqual(buySkin(settings, 'ufo', 25).ok, false, 'на пустом кошельке не купить');
+    assertEqual(settings.wallet.coins, 0, 'кошелёк восстановлен');
+    assertEqual(JSON.stringify(settings.skins.owned), JSON.stringify([DEFAULT_SKIN]), 'скины восстановлены');
+
+    addCoins(settings, 25);
+    assertEqual(buySkin(settings, 'ufo', 25).ok, true, 'теперь хватает');
+    assertEqual(buySkin(settings, '', 0).ok, false, 'пустой id — не покупка');
+    assertEqual(buySkin(settings, 'free', -3).ok, true, 'мусорная цена считается нулём');
+    assertEqual(readWallet(settings).coins, 0, 'бесплатный скин ничего не списал');
 });
 
 test('сброс статистики кошелёк не трогает', () => {

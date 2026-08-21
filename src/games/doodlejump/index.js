@@ -8,14 +8,15 @@
 // статистика и настройки.
 
 import {
-    advance, createGame, DEFAULT_DIFFICULTY, DIFFICULTY, setBoosters, setDifficulty, setInput,
-    setMovingPlatforms,
+    advance, createGame, DEFAULT_DIFFICULTY, DIFFICULTY, PLAYER_H, PLAYER_W, setBoosters,
+    setDifficulty, setInput, setMovingPlatforms,
 } from './core/engine.js';
 import { readStats, recordPlayed, recordResult, resetStats } from './core/stats.js';
-import { addCoins, readWallet } from './core/wallet.js';
+import { addCoins, buySkin, readSkins, readWallet, wearSkin } from './core/wallet.js';
 import { logError } from '../../log.js';
 import { checkbox, row, select } from '../../shell/settings-ui.js';
 import { createView } from './ui/view.js';
+import { resolveColors, SKINS } from './ui/skins.js';
 import { attachKeyboard, createButtons, createDrag } from './ui/controls.js';
 
 const DEFAULTS = Object.freeze({
@@ -161,11 +162,20 @@ function createDoodleJumpScreen(root, api) {
     header.appendChild(platformsEl);
     header.appendChild(coinsEl);
     header.appendChild(bestEl);
+    // Вход в магазин из шапки: он же доступен с экрана проигрыша — там момент «потратить»
+    // самый естественный, но ждать падения ради переодевания игрок не обязан.
+    const shopBtn = document.createElement('button');
+    shopBtn.className = 'doodlejump-shop-open menu_button';
+    shopBtn.textContent = 'Магазин';
+    header.appendChild(shopBtn);
     root.appendChild(header);
+
+    const settings = api.settings;
 
     const stage = document.createElement('div');
     stage.className = 'doodlejump-stage';
-    const view = createView();
+    // Скин перечитывается из настроек каждый кадр — покупка в магазине видна сразу.
+    const view = createView({ getSkinId: () => readSkins(settings).current });
     stage.appendChild(view.root);
 
     // Оверлей висит на обёртке канваса (position: relative), а не на корне: он должен
@@ -175,9 +185,16 @@ function createDoodleJumpScreen(root, api) {
     overlay.innerHTML = '<div class="doodlejump-over-content"></div>';
     overlay.style.display = 'none';
     stage.appendChild(overlay);
-    root.appendChild(stage);
 
-    const settings = api.settings;
+    // Магазин — второй оверлей на той же сцене, а не отдельная игра в хабе: покупают
+    // скины для этой игры и надевают их тут же, уходить за этим некуда
+    // (docs/plan-doodlejump-fixes.md §G.3). Лежит после оверлея падения, поэтому,
+    // открытый с экрана проигрыша, честно накрывает его собой.
+    const shop = document.createElement('div');
+    shop.className = 'doodlejump-shop';
+    shop.style.display = 'none';
+    stage.appendChild(shop);
+    root.appendChild(stage);
 
     // Клавиатура и кнопки держат СВОИ флаги и сообщают свой вклад по отдельности —
     // складываем их здесь, чтобы отпускание кнопки не сбрасывало зажатую клавишу.
@@ -218,6 +235,10 @@ function createDoodleJumpScreen(root, api) {
     let state = newGame();
     let manualPaused = false;
     let autoPaused = false;
+    // Пока магазин открыт, партия стоит на manualPaused — третий флаг паузы заводить не за
+    // что. Запоминаем только, была ли пауза до открытия, чтобы закрытие магазина не сняло
+    // паузу, поставленную игроком руками.
+    let pausedBeforeShop = false;
     let lastFrame = null;
     let rafId = null;
     let overRecorded = false;
@@ -250,7 +271,9 @@ function createDoodleJumpScreen(root, api) {
     }
 
     function updateStatus() {
-        if (!state.alive) {
+        if (shopOpen()) {
+            status.textContent = 'Магазин — партия на паузе';
+        } else if (!state.alive) {
             status.textContent = 'Падение. Нажмите Enter для новой игры.';
         } else if (paused()) {
             status.textContent = 'Пауза';
@@ -267,6 +290,9 @@ function createDoodleJumpScreen(root, api) {
         let html = `<div>Высота ${state.score}</div><div>Платформ ${state.landings}</div>`;
         if (isBest) html += '<div>Новый рекорд!</div>';
         html += '<button class="doodlejump-over-restart menu_button">Ещё раз</button>';
+        // Монеты заезда уже в кошельке (record() → cashOut()), так что момент «потратить»
+        // здесь самый естественный — вход в магазин прямо с экрана проигрыша.
+        html += '<button class="doodlejump-over-shop menu_button">Магазин</button>';
         content.innerHTML = html;
         const restartBtn = content.querySelector('.doodlejump-over-restart');
         if (restartBtn) {
@@ -275,8 +301,154 @@ function createDoodleJumpScreen(root, api) {
                 restart();
             });
         }
+        const overShopBtn = content.querySelector('.doodlejump-over-shop');
+        if (overShopBtn) {
+            overShopBtn.addEventListener('click', () => {
+                overShopBtn.blur();
+                openShop();
+            });
+        }
         updateStatus();
     }
+
+    const shopOpen = () => shop.style.display !== 'none';
+
+    // Превью скина — тот же draw, что и в игре, на маленьком канвасе: реестр для того и
+    // сделан функцией отрисовки, чтобы картинку в магазине не рисовать вторым способом.
+    function drawPreview(canvas, skin) {
+        const ctx2d = canvas.getContext('2d');
+        // jsdom без пакета canvas контекста не даёт — плитка остаётся без картинки, но
+        // магазин работает: то же осознанное ограничение, что и у поля.
+        if (!ctx2d) return;
+        const style = getComputedStyle(canvas);
+        const pick = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
+        const scale = Math.min(canvas.width / PLAYER_W, canvas.height / PLAYER_H) * 0.8;
+        const w = PLAYER_W * scale;
+        const h = PLAYER_H * scale;
+        ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+        skin.draw(ctx2d, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h, 1, resolveColors(skin, pick));
+    }
+
+    function renderShop() {
+        const wallet = readWallet(settings);
+        const { owned, current } = readSkins(settings);
+        shop.innerHTML = '';
+
+        const content = document.createElement('div');
+        content.className = 'doodlejump-shop-content';
+
+        const title = document.createElement('b');
+        title.textContent = 'Магазин';
+        const balance = document.createElement('div');
+        balance.className = 'doodlejump-shop-balance';
+        // Кошелёк, а не счётчик заезда: тратить можно только накопленное.
+        balance.textContent = `Монет: ${wallet.coins}`;
+        content.append(title, balance);
+
+        const items = document.createElement('div');
+        items.className = 'doodlejump-shop-items';
+        for (const skin of SKINS) {
+            const isOwned = owned.includes(skin.id);
+            const isWorn = skin.id === current;
+
+            const item = document.createElement('div');
+            item.className = 'doodlejump-shop-item';
+            item.dataset.skinId = skin.id;
+            if (isWorn) item.classList.add('is-worn');
+
+            const preview = document.createElement('canvas');
+            preview.className = 'doodlejump-shop-preview';
+            preview.width = 72;
+            preview.height = 72;
+
+            const name = document.createElement('div');
+            name.className = 'doodlejump-shop-name';
+            name.textContent = skin.title;
+
+            const note = document.createElement('div');
+            note.className = 'doodlejump-shop-note';
+            if (isWorn) note.textContent = 'Надет';
+            else if (isOwned) note.textContent = 'Куплен';
+            else note.textContent = `Цена: ${skin.price}`;
+
+            const btn = document.createElement('button');
+            btn.className = 'doodlejump-shop-action menu_button';
+            if (isWorn) {
+                btn.textContent = 'Надет';
+                btn.disabled = true;
+            } else if (isOwned) {
+                btn.textContent = 'Надеть';
+                btn.addEventListener('click', () => {
+                    wearSkin(settings, skin.id);
+                    api.save();
+                    renderShop();
+                    view.draw(state);
+                });
+            } else {
+                btn.textContent = `Купить за ${skin.price}`;
+                btn.addEventListener('click', () => {
+                    // Цену магазин передаёт сам: реестр скинов живёт в ui/, и ядро о нём
+                    // знать не должно (docs/plan-doodlejump-fixes.md §G.3).
+                    const res = buySkin(settings, skin.id, skin.price);
+                    if (!res.ok) {
+                        if (res.reason === 'poor') api.toast('info', 'Не хватает монет');
+                        renderShop();
+                        return;
+                    }
+                    api.save();
+                    api.renderAllStats?.();
+                    renderShop();
+                    view.draw(state);
+                });
+            }
+
+            item.append(preview, name, note, btn);
+            items.appendChild(item);
+            // Рисовать после вставки в документ: цвета берутся из палитры .stg-root
+            // через getComputedStyle, а вне дерева наследовать их неоткуда.
+            drawPreview(preview, skin);
+        }
+        content.appendChild(items);
+
+        const close = document.createElement('button');
+        close.className = 'doodlejump-shop-close menu_button';
+        close.textContent = 'Закрыть';
+        close.addEventListener('click', () => {
+            close.blur();
+            closeShop();
+        });
+        content.appendChild(close);
+
+        shop.appendChild(content);
+    }
+
+    function openShop() {
+        if (shopOpen()) return;
+        pausedBeforeShop = manualPaused;
+        manualPaused = true;
+        shop.style.display = 'flex';
+        renderShop();
+        updateStatus();
+    }
+
+    function closeShop() {
+        if (!shopOpen()) return;
+        shop.style.display = 'none';
+        shop.innerHTML = '';
+        manualPaused = pausedBeforeShop;
+        // Часы цикла стояли всё это время: без сброса первый кадр после закрытия пришёл бы
+        // с огромным dt — та же причина, что и при возврате на вкладку.
+        lastFrame = null;
+        state.accumulatorMs = 0;
+        updateStatus();
+        view.draw(state);
+    }
+
+    shopBtn.addEventListener('click', () => {
+        shopBtn.blur();
+        if (shopOpen()) closeShop();
+        else openShop();
+    });
 
     // Запись результата — строго один раз за заезд: rAF после падения продолжает крутиться
     // (оверлей и рестарт живут в том же цикле), и без флага статистика писалась бы каждый
@@ -316,6 +488,9 @@ function createDoodleJumpScreen(root, api) {
     }
 
     function restart() {
+        // Новый заезд с открытой витриной — бессмыслица: закрываем её, а не оставляем
+        // висеть поверх свежей партии.
+        closeShop();
         // На всякий случай и здесь: после падения монеты уже в кошельке (record()), но
         // рестарт не должен быть способом потерять собранное ни при каком порядке событий.
         cashOut();
@@ -377,12 +552,15 @@ function createDoodleJumpScreen(root, api) {
             keyDir = dir;
             applyInput();
         },
+        // Пока открыт магазин, пауза и рестарт с клавиатуры игнорируются: партия и так
+        // стоит, а Enter не должен начинать новый заезд за спиной у витрины.
         onPause: () => {
+            if (shopOpen()) return;
             manualPaused = !manualPaused;
             updateStatus();
         },
         onRestart: () => {
-            if (!state.alive) restart();
+            if (!state.alive && !shopOpen()) restart();
         },
     });
 

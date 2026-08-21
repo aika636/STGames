@@ -117,6 +117,24 @@ export function createView() {
         ctx2d.fillRect(x, top + h * 0.15, w, Math.max(1, h * 0.12));
     }
 
+    // Монета — кружок в блёклом ореоле: круглый силуэт не спутать ни с бустером, ни с
+    // платформой даже там, где цвета темы сблизились. Ореол — тот же цвет с альфой,
+    // рисуется первым и шире ядра; второй переменной палитры на это заводить не за что.
+    function drawCoin(x, top, scale, color) {
+        const r = (PICKUP_W * scale) / 2;
+        const cx = x + r;
+        const cy = top + (PICKUP_H * scale) / 2;
+        ctx2d.fillStyle = color;
+        ctx2d.globalAlpha = 0.35;
+        ctx2d.beginPath();
+        ctx2d.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx2d.fill();
+        ctx2d.globalAlpha = 1;
+        ctx2d.beginPath();
+        ctx2d.arc(cx, cy, r * 0.62, 0, Math.PI * 2);
+        ctx2d.fill();
+    }
+
     // Пока бустер активен — полоска остатка над фигуркой: без неё игрок не понимает,
     // сколько ещё лететь, и не успевает прицелиться к концу полёта.
     function drawBoostGauge(player, py, scale, color) {
@@ -174,6 +192,7 @@ export function createView() {
         const springColor = pick('--stg-doodlejump-spring', '#e0c34d');
         const propellerColor = pick('--stg-doodlejump-propeller', '#7bc6c6');
         const rocketColor = pick('--stg-doodlejump-rocket', '#d1603d');
+        const coinColor = pick('--stg-doodlejump-coin', '#e0b84d');
 
         const cameraY = state.cameraY;
         const platformH = PLATFORM_H * scale;
@@ -201,11 +220,15 @@ export function createView() {
             else if (platform.kind === 'spring') drawSpring(px, top, pw, scale, platformColor);
         }
 
-        // Бустеры рисуются после платформ и до фигурки: предмет лежит на платформе, а
+        // Предметы рисуются после платформ и до фигурки: предмет лежит на платформе, а
         // фигурка проходит поверх него.
         for (const pickup of state.pickups || []) {
             if (pickup.taken) continue;
             if (pickup.y < worldTop - PICKUP_H || pickup.y > worldBottom) continue;
+            if (pickup.kind === 'coin') {
+                drawCoin(pickup.x * scale, (pickup.y - cameraY) * scale, scale, coinColor);
+                continue;
+            }
             drawPickup(
                 pickup.kind,
                 pickup.x * scale,

@@ -12,6 +12,9 @@ import { mulberry32 } from '../../src/games/doodlejump/core/rng.js';
 import {
     EMPTY_ENTRY, readStats, recordPlayed, recordResult, resetStats,
 } from '../../src/games/doodlejump/core/stats.js';
+import {
+    DEFAULT_SKIN, addCoins, readSkins, readWallet,
+} from '../../src/games/doodlejump/core/wallet.js';
 import { assert, assertEqual, report, test } from '../_harness.mjs';
 
 console.log('doodlejump engine');
@@ -256,7 +259,9 @@ test('проигрыш строго в тот подшаг, когда фигу�
 });
 
 test('счёт монотонен: спуск после промаха его не уменьшает', () => {
-    const state = createGame({ rng: mulberry32(11) });
+    // Сид подобран под этот сценарий: заезд по скрипту выше должен и подняться, и
+    // кончиться падением, иначе проверять нечего.
+    const state = createGame({ rng: mulberry32(14) });
     let previous = 0;
     let peak = 0;
     for (let i = 0; i < 4000 && state.alive; i++) {
@@ -633,14 +638,19 @@ test('во время полёта фигурка остаётся на экра
     }
 });
 
+// Монеты живут в том же state.pickups, что и бустеры (см. шапку «Монеты» в engine.js),
+// поэтому проверки про бустеры фильтруют массив по kind.
+const boostsOf = (state) => state.pickups.filter((p) => p.kind !== 'coin');
+const coinsOf = (state) => state.pickups.filter((p) => p.kind === 'coin');
+
 test('выключатель убирает бустеры из генератора, а сид держит их воспроизводимость', () => {
     const off = createGame({ rng: mulberry32(42), boosters: false });
     ensurePlatformsAbove(off, -20000);
-    assertEqual(off.pickups.length, 0, 'выключено — предметов нет');
+    assertEqual(boostsOf(off).length, 0, 'выключено — бустеров нет');
 
     const on = createGame({ rng: mulberry32(42), boosters: true });
     ensurePlatformsAbove(on, -20000);
-    assert(on.pickups.length > 5, `включено — предметы генерируются: ${on.pickups.length}`);
+    assert(boostsOf(on).length > 5, `включено — бустеры генерируются: ${boostsOf(on).length}`);
     assert(on.pickups.some((p) => p.kind === 'rocket'), 'ракеты встречаются');
     assert(on.pickups.some((p) => p.kind === 'propeller'), 'пропеллеры встречаются');
 
@@ -654,23 +664,158 @@ test('выключатель убирает бустеры из генерато
     );
 
     // Живой выключатель действует на новое поле, уже настеленное не переписывает.
-    const wasThere = on.pickups.length;
+    const wasThere = boostsOf(on).length;
     setBoosters(on, false);
     ensurePlatformsAbove(on, -40000);
-    assertEqual(on.pickups.length, wasThere, 'после выключения новых предметов не прибавилось');
+    assertEqual(boostsOf(on).length, wasThere, 'после выключения новых бустеров не прибавилось');
 });
 
 test('бустер лежит на обычной платформе, а не в пустоте', () => {
     const state = createGame({ rng: mulberry32(7) });
     ensurePlatformsAbove(state, -20000);
-    assert(state.pickups.length > 5, 'предметы есть');
+    assert(boostsOf(state).length > 5, 'бустеры есть');
 
-    for (const pickup of state.pickups) {
+    for (const pickup of boostsOf(state)) {
         assert(pickup.x >= 0 && pickup.x + PICKUP_W <= WORLD_W, 'предмет внутри экрана');
         const under = state.platforms.find((p) => Math.abs(p.y - (pickup.y + PICKUP_H + 2)) < 1e-6);
         assert(under, `под предметом на y=${pickup.y} есть платформа`);
         assertEqual(under.kind, 'normal', 'и она обычная — движущаяся уехала бы из-под предмета');
     }
+});
+
+// --- Монеты (docs/plan-doodlejump-fixes.md §G.2) ------------------------------------
+
+// Монеты кладём вручную: генератор в этих тестах не участвует, проверяется подбор.
+function withCoins(positions) {
+    const state = bareState();
+    state.pickups = positions.map((pos, i) => ({
+        id: 100 + i, kind: 'coin', x: pos.x, y: pos.y, w: PICKUP_W,
+    }));
+    state.player.x = positions[0].x;
+    state.player.y = positions[0].y;
+    return state;
+}
+
+test('монета подбирается ровно один раз', () => {
+    const state = withCoins([{ x: 180, y: 400 }]);
+    assertEqual(state.coins, 0, 'до подбора счётчик пуст');
+
+    const first = stepOnce(state);
+    assertEqual(first.coins, 1, 'тиковый счётчик за подшаг');
+    assertEqual(state.coins, 1, 'счётчик заезда вырос');
+
+    const second = stepOnce(state);
+    assertEqual(second.coins, 0, 'второй раз та же монета не считается');
+    assertEqual(state.coins, 1, 'счётчик заезда не вырос');
+});
+
+test('монета не даёт буста и не трогает физику', () => {
+    const withCoin = withCoins([{ x: 180, y: 400 }]);
+    const without = bareState();
+    without.player.x = 180;
+    without.player.y = 400;
+
+    const res = stepOnce(withCoin);
+    stepOnce(without);
+    assertEqual(res.coins, 1, 'монета подобрана');
+    assertEqual(withCoin.player.boost, null, 'буста монета не даёт');
+    assertEqual(withCoin.player.vy, without.player.vy, 'скорость та же, что без монеты');
+    assertEqual(withCoin.player.y, without.player.y, 'и позиция та же');
+    assertEqual(withCoin.landings, 0, 'монета не платформа — приземления нет');
+});
+
+test('несколько монет за подшаг считаются все', () => {
+    const state = withCoins([{ x: 180, y: 400 }, { x: 190, y: 400 }, { x: 170, y: 400 }]);
+    const res = stepOnce(state);
+    assertEqual(res.coins, 3, 'три монеты за один подшаг');
+    assertEqual(state.coins, 3, 'все три в счётчике заезда');
+});
+
+test('advance суммирует монеты за все подшаги кадра', () => {
+    // Столбик монет вдоль быстрого падения: за подшаг фигурка проходит меньше, чем
+    // расстояние между монетами, значит они достаются из разных подшагов.
+    const drop = [];
+    for (let i = 0; i < 12; i++) drop.push({ x: 180, y: 400 + i * 60 });
+    const state = withCoins(drop);
+    state.player.vy = 3000;
+
+    const res = advance(state, 33);
+    assert(res.steps >= 3, `подшагов за кадр: ${res.steps}`);
+    assert(res.coins >= 2, `монеты за кадр: ${res.coins}`);
+    assertEqual(res.coins, state.coins, 'сумма кадра совпала со счётчиком заезда');
+});
+
+test('генератор кладёт монеты рядом с платформами, а сид их воспроизводит', () => {
+    const state = createGame({ rng: mulberry32(21) });
+    ensurePlatformsAbove(state, -20000);
+    const coins = coinsOf(state);
+    assert(coins.length > 5, `монеты генерируются: ${coins.length}`);
+
+    for (const coin of coins) {
+        assert(coin.x >= 0 && coin.x + PICKUP_W <= WORLD_W, 'монета внутри экрана');
+        const under = state.platforms.find((p) => Math.abs(p.y - (coin.y + PICKUP_H + 2)) < 1e-6);
+        assert(under, `под монетой на y=${coin.y} есть платформа`);
+        assert(under.kind !== 'spring', 'на пружине монеты нет — там зигзаг');
+    }
+
+    // Монеты идут через тот же rng, что платформы и бустеры: партия по сиду совпадает
+    // целиком, а не «почти».
+    const again = createGame({ rng: mulberry32(21) });
+    ensurePlatformsAbove(again, -20000);
+    assertEqual(
+        JSON.stringify(again.pickups),
+        JSON.stringify(state.pickups),
+        'предметы по сиду воспроизводятся',
+    );
+});
+
+// --- Кошелёк (core/wallet.js) --------------------------------------------------------
+
+test('кошелёк копится, а счётчик заезда с ним не путается', () => {
+    const settings = { wallet: { coins: 0 } };
+    assertEqual(readWallet(settings).coins, 0, 'пустой кошелёк');
+
+    assertEqual(addCoins(settings, 7), 7, 'первый заезд');
+    assertEqual(addCoins(settings, 5), 12, 'второй прибавился к первому');
+    assertEqual(settings.wallet.coins, 12, 'записано в тот же объект настроек');
+});
+
+test('битый кошелёк из настроек нормализуется, а не роняет', () => {
+    assertEqual(readWallet(undefined).coins, 0, 'настроек нет вовсе');
+    assertEqual(readWallet({}).coins, 0, 'ключа нет');
+    assertEqual(readWallet({ wallet: 'нет' }).coins, 0, 'скаляр вместо объекта');
+    assertEqual(readWallet({ wallet: { coins: 'много' } }).coins, 0, 'строка вместо числа');
+    assertEqual(readWallet({ wallet: { coins: -5 } }).coins, 0, 'отрицательное');
+    assertEqual(readWallet({ wallet: { coins: 3.7 } }).coins, 3, 'дробное усекается');
+
+    const broken = { wallet: [1, 2, 3] };
+    assertEqual(addCoins(broken, 4), 4, 'массив заменён свежим кошельком');
+    assertEqual(broken.wallet.coins, 4, 'и он на месте настроек');
+
+    const junk = { wallet: { coins: null } };
+    assertEqual(addCoins(junk, 'пять'), 0, 'мусорная прибавка — ноль');
+});
+
+test('скины нормализуются: default не теряется, current только из купленных', () => {
+    assertEqual(readSkins(undefined).current, DEFAULT_SKIN, 'настроек нет');
+    assertEqual(JSON.stringify(readSkins({}).owned), JSON.stringify([DEFAULT_SKIN]), 'ключа нет');
+    assertEqual(
+        JSON.stringify(readSkins({ skins: { owned: 'ninja', current: 5 } }).owned),
+        JSON.stringify([DEFAULT_SKIN]),
+        'мусор вместо списка',
+    );
+    assertEqual(readSkins({ skins: { owned: [DEFAULT_SKIN], current: 'ninja' } }).current, DEFAULT_SKIN,
+        'некупленный скин не выбран');
+    const ok = readSkins({ skins: { owned: ['ninja', 'ninja', '', 7], current: 'ninja' } });
+    assertEqual(JSON.stringify(ok.owned), JSON.stringify([DEFAULT_SKIN, 'ninja']), 'повторы и мусор убраны');
+    assertEqual(ok.current, 'ninja', 'купленный скин выбран');
+});
+
+test('сброс статистики кошелёк не трогает', () => {
+    const settings = { stats: { played: 3, bestScore: 500 }, wallet: { coins: 42 } };
+    resetStats(settings.stats);
+    assertEqual(readStats(settings.stats).played, 0, 'статистика обнулена');
+    assertEqual(readWallet(settings).coins, 42, 'монеты на месте');
 });
 
 report('doodlejump engine');

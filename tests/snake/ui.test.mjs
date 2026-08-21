@@ -201,6 +201,26 @@ await session({ gameId: 'snake' }, async (root) => {
     });
 });
 
+// Брошенная партия (закрыли окно посреди заезда) записывает результат: «сыграно» выросло
+// на старте, и без записи заезд числился бы сыгранным, но без рекорда — потеря данных.
+// Партия змейки не сохраняется by design, так что «доиграю потом» тут не бывает.
+
+getSettings().games.snake.stats = { played: 0, bestScore: 0, bestLength: 0 };
+
+await session({ gameId: 'snake' }, async () => {
+    test('до закрытия окна брошенная партия рекорда не записала', () => {
+        const stats = getSettings().games.snake.stats;
+        assertEqual(stats.played, 1, 'заезд числится сыгранным');
+        assertEqual(stats.bestLength, 0, 'а длина ещё не записана');
+    });
+});
+
+test('брошенная партия записывает результат при закрытии окна', () => {
+    const stats = getSettings().games.snake.stats;
+    assertEqual(stats.played, 1, 'сыгранным заезд остался ровно одним');
+    assertEqual(stats.bestLength, 3, 'длина стартовой змейки записана');
+});
+
 test('destroy снимает слушатель keydown с document', () => {
     const event = new dom.window.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true });
     document.dispatchEvent(event);

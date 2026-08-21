@@ -615,6 +615,41 @@ test('брошенный заезд засчитывает монеты при �
     assertEqual(walletCoins(), walletBeforeQuit + earnedInQuit, 'кошелёк вырос на собранное');
 });
 
+// Брошенный заезд записывает не только монеты, но и результат: иначе он числится
+// сыгранным («сыграно» растёт на старте), а высоты в статистике нет — потеря данных
+// (docs/plan-doodlejump-fixes.md §M).
+
+getSettings().games.doodlejump.stats = { played: 0, bestScore: 0, bestPlatforms: 0 };
+useDefaultRng();
+let heightInQuit = 0;
+
+await session({ gameId: 'doodlejump' }, async (root) => {
+    // Набираем высоту: без ввода фигурка скачет на стартовой платформе, поэтому едем
+    // вбок — но останавливаемся ДО падения, иначе результат запишет обычный record().
+    const height = () => Number(root.querySelector('.doodlejump-header span').textContent.replace(/\D+/g, ''));
+    const overlay = root.querySelector('.doodlejump-over');
+    key('keydown', 'ArrowRight');
+    let guard = 0;
+    while (height() === 0 && overlay.style.display !== 'flex' && guard < 400) {
+        frame();
+        guard += 1;
+    }
+    key('keyup', 'ArrowRight');
+    heightInQuit = height();
+
+    test('до закрытия окна результат брошенного заезда ещё не записан', () => {
+        assert(heightInQuit > 0, `высота набрана: ${heightInQuit}`);
+        assertEqual(getSettings().games.doodlejump.stats.bestScore, 0, 'рекорд пока нулевой');
+        assertEqual(getSettings().games.doodlejump.stats.played, 1, 'а заезд уже числится сыгранным');
+    });
+});
+
+test('брошенный заезд записывает высоту при закрытии окна', () => {
+    const stats = getSettings().games.doodlejump.stats;
+    assertEqual(stats.bestScore, heightInQuit, 'рекорд — высота брошенного заезда');
+    assertEqual(stats.played, 1, 'сыгранным заезд остался ровно одним');
+});
+
 // Кошелёк из руками поправленного settings.json может оказаться чем угодно: экран обязан
 // это пережить и починить запись, а не упасть.
 getSettings().games.doodlejump.wallet = 'нет у меня кошелька';

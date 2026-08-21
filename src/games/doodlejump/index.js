@@ -610,8 +610,9 @@ function createDoodleJumpScreen(root, api) {
     // зависание, а не про ошибку. Поэтому сдавшийся цикл обязан сказать это словами.
     function crash() {
         crashed = true;
-        // Собранное за заезд не пропадает: монеты игрок собрал, ошибка не его вина.
-        cashOut();
+        // Собранное за заезд не пропадает: и монеты, и высота — игрок их набрал, ошибка
+        // не его вина. record() сам зовёт cashOut() и защищён от повторной записи.
+        record();
         overlay.style.display = 'flex';
         const content = overlay.querySelector('.doodlejump-over-content');
         content.innerHTML = '<div>Что-то сломалось</div>'
@@ -770,7 +771,13 @@ function createDoodleJumpScreen(root, api) {
         destroy() {
             if (destroyed) return;
             destroyed = true;
-            cashOut();
+            // Брошенный заезд записывается целиком, а не наполовину. «Сыграно» на старте
+            // уже отработало, монеты забирает cashOut() — оставлять при этом высоту
+            // незаписанной значит терять данные: заезд числится сыгранным, но без
+            // результата. Обоснование то же, что у монет («отбирать собранное за то, что
+            // окно закрыли, — наказание на ровном месте»), а от двойной записи защищает
+            // overRecorded.
+            record();
             if (rafId) cancelAnimationFrame(rafId);
             keyboard.destroy();
             buttons.destroy();

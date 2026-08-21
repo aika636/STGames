@@ -1,0 +1,382 @@
+// «Дудл Джамп» как игра хаба: объект по контракту реестра (src/registry.js). Экран
+// собирает createDoodleJumpScreen — canvas (ui/view.js) плюс клавиатура и экранные кнопки
+// (ui/controls.js); цикл — requestAnimationFrame, а сколько физики прогнать за кадр,
+// решает advance() движка (фиксированный подшаг с накопителем).
+//
+// Партия не сохраняется, как и у змейки: падение ниже экрана — естественный конец заезда,
+// а пауза при потере вкладки делает персистентность ненужной. В settings живут только
+// статистика и настройки.
+
+import {
+    advance, createGame, DEFAULT_DIFFICULTY, DIFFICULTY, setDifficulty, setInput, setMovingPlatforms,
+} from './core/engine.js';
+import { readStats, recordPlayed, recordResult, resetStats } from './core/stats.js';
+import { logError } from '../../log.js';
+import { checkbox, row, select } from '../../shell/settings-ui.js';
+import { createView } from './ui/view.js';
+import { attachKeyboard, createButtons } from './ui/controls.js';
+
+const DEFAULTS = Object.freeze({
+    stats: {},
+    difficulty: DEFAULT_DIFFICULTY,
+    movingPlatforms: true,
+    showButtons: true,
+});
+
+// Подписи к ключам DIFFICULTY из движка: список уровней берётся оттуда, чтобы новый
+// уровень не пришлось дублировать в двух местах.
+const DIFFICULTY_LABELS = Object.freeze({
+    easy: 'Лёгкая',
+    normal: 'Обычная',
+    hard: 'Сложная',
+});
+
+export default {
+    id: 'doodlejump',
+    title: 'Дудл Джамп',
+    tagline: 'Прыгай выше — не упади',
+    // Хаб и панель настроек сами дописывают fa-solid — здесь только имя глифа, как у
+    // остальных игр. Наличие fa-shoe-prints в наборе ST 1.18.0 проверяется на живой
+    // инсталляции (Фаза 5).
+    icon: 'fa-shoe-prints',
+    defaults: DEFAULTS,
+    slash: { name: 'doodlejump', help: 'Открыть игру «Дудл Джамп»' },
+    mount(root, api) {
+        return createDoodleJumpScreen(root, api);
+    },
+    // Общие хелперы оболочки, а не своя разметка: блоки игр в одной панели должны
+    // выглядеть одинаково (и клик по подписи — переключать чекбокс).
+    renderSettings(container, api) {
+        if (!container) return;
+        const settings = api.settings;
+
+        // Сложность и движущиеся платформы — живые: экран перечитывает их каждый кадр
+        // и передаёт генератору, так что переключатель действует на идущую партию.
+        container.appendChild(row('Сложность', select(
+            'doodlejump_difficulty',
+            Object.keys(DIFFICULTY).map((key) => [key, DIFFICULTY_LABELS[key] ?? key]),
+            DIFFICULTY[settings.difficulty] ? settings.difficulty : DEFAULT_DIFFICULTY,
+            (value) => {
+                settings.difficulty = DIFFICULTY[value] ? value : DEFAULT_DIFFICULTY;
+                api.save();
+            },
+        )));
+
+        container.appendChild(checkbox(
+            'doodlejump_moving_platforms',
+            'Движущиеся платформы',
+            settings.movingPlatforms !== false,
+            (checked) => {
+                settings.movingPlatforms = checked;
+                api.save();
+            },
+        ));
+
+        // Кнопки — единственная чисто визуальная настройка: сама собой открытый экран её
+        // не заметит, поэтому пинаем окно через onSettingsChanged → refresh().
+        container.appendChild(checkbox(
+            'doodlejump_show_buttons',
+            'Экранные кнопки влево/вправо',
+            settings.showButtons !== false,
+            (checked) => {
+                settings.showButtons = checked;
+                api.save();
+                api.onSettingsChanged?.(settings);
+            },
+        ));
+    },
+    renderStats(container, api) {
+        if (!container) return;
+        container.innerHTML = '';
+        const stats = readStats(api.settings.stats);
+
+        // Та же шапка, что у остальных игр: «Статистика» слева, «Сбросить» справа.
+        const header = document.createElement('div');
+        header.className = 'stg-row doodlejump-stats-header';
+        const heading = document.createElement('b');
+        heading.textContent = 'Статистика';
+        header.appendChild(heading);
+        container.appendChild(header);
+
+        const played = document.createElement('div');
+        played.textContent = `Сыграно: ${stats.played}`;
+        const bestScore = document.createElement('div');
+        bestScore.textContent = `Лучшая высота: ${stats.bestScore}`;
+        const bestPlatforms = document.createElement('div');
+        bestPlatforms.textContent = `Лучший забег по платформам: ${stats.bestPlatforms}`;
+        container.append(played, bestScore, bestPlatforms);
+
+        if (stats.played || stats.bestScore || stats.bestPlatforms) {
+            const btn = document.createElement('button');
+            btn.className = 'menu_button';
+            btn.title = 'Обнулить статистику';
+            btn.textContent = 'Сбросить';
+            btn.addEventListener('click', () => {
+                resetStats(api.settings.stats);
+                api.save();
+                api.renderAllStats();
+            });
+            header.appendChild(btn);
+        }
+    },
+};
+
+function createDoodleJumpScreen(root, api) {
+    root.innerHTML = '';
+    const screen = document.createElement('div');
+    screen.className = 'doodlejump-root';
+    root.appendChild(screen);
+    root = screen;
+
+    // Счёт — HTML-шапкой, а не текстом на канвасе: на канвасе он мылится при DPI-скейле и
+    // не берёт цвета из палитры, а элемент решает обе проблемы бесплатно.
+    const header = document.createElement('div');
+    header.className = 'doodlejump-header';
+    const scoreEl = document.createElement('span');
+    const platformsEl = document.createElement('span');
+    const bestEl = document.createElement('span');
+    header.appendChild(scoreEl);
+    header.appendChild(platformsEl);
+    header.appendChild(bestEl);
+    root.appendChild(header);
+
+    const stage = document.createElement('div');
+    stage.className = 'doodlejump-stage';
+    const view = createView();
+    stage.appendChild(view.root);
+
+    // Оверлей висит на обёртке канваса (position: relative), а не на корне: он должен
+    // лежать ровно поверх поля, не накрывая шапку и кнопки.
+    const overlay = document.createElement('div');
+    overlay.className = 'doodlejump-over';
+    overlay.innerHTML = '<div class="doodlejump-over-content"></div>';
+    overlay.style.display = 'none';
+    stage.appendChild(overlay);
+    root.appendChild(stage);
+
+    const settings = api.settings;
+
+    // Клавиатура и кнопки держат СВОИ флаги и сообщают свой вклад по отдельности —
+    // складываем их здесь, чтобы отпускание кнопки не сбрасывало зажатую клавишу.
+    let keyDir = 0;
+    let btnDir = 0;
+    function applyInput() {
+        const dir = Math.sign(keyDir + btnDir);
+        if (state) setInput(state, dir);
+    }
+
+    const buttons = createButtons({
+        onInput: (dir) => {
+            btnDir = dir;
+            applyInput();
+        },
+    });
+    root.appendChild(buttons.root);
+
+    const status = document.createElement('div');
+    status.className = 'doodlejump-status';
+    root.appendChild(status);
+
+    let state = newGame();
+    let manualPaused = false;
+    let autoPaused = false;
+    let lastFrame = null;
+    let rafId = null;
+    let overRecorded = false;
+    let destroyed = false;
+
+    const paused = () => manualPaused || autoPaused;
+
+    function newGame() {
+        return createGame({
+            rng: Math.random,
+            difficulty: settings.difficulty,
+            movingPlatforms: settings.movingPlatforms !== false,
+        });
+    }
+
+    function applyVisibility() {
+        buttons.root.style.display = settings.showButtons === false ? 'none' : '';
+    }
+
+    function updateHeader() {
+        const best = readStats(settings.stats);
+        scoreEl.textContent = `Высота: ${state.score}`;
+        platformsEl.textContent = `Платформ: ${state.landings}`;
+        bestEl.textContent = `Рекорд: ${best.bestScore}`;
+    }
+
+    function updateStatus() {
+        if (!state.alive) {
+            status.textContent = 'Падение. Нажмите Enter для новой игры.';
+        } else if (paused()) {
+            status.textContent = 'Пауза';
+        } else {
+            status.textContent = '';
+        }
+    }
+
+    function showOver() {
+        overlay.style.display = 'flex';
+        const content = overlay.querySelector('.doodlejump-over-content');
+        const best = readStats(settings.stats);
+        const isBest = state.score > best.bestScore || state.landings > best.bestPlatforms;
+        let html = `<div>Высота ${state.score}</div><div>Платформ ${state.landings}</div>`;
+        if (isBest) html += '<div>Новый рекорд!</div>';
+        html += '<button class="doodlejump-over-restart menu_button">Ещё раз</button>';
+        content.innerHTML = html;
+        const restartBtn = content.querySelector('.doodlejump-over-restart');
+        if (restartBtn) {
+            restartBtn.addEventListener('click', () => {
+                restartBtn.blur();
+                restart();
+            });
+        }
+        updateStatus();
+    }
+
+    // Запись результата — строго один раз за заезд: rAF после падения продолжает крутиться
+    // (оверлей и рестарт живут в том же цикле), и без флага статистика писалась бы каждый
+    // кадр.
+    function record() {
+        if (overRecorded) return;
+        overRecorded = true;
+        try {
+            const result = recordResult(settings.stats, { score: state.score, platforms: state.landings });
+            api.save();
+            api.renderAllStats();
+            if (result.bestScore || result.bestPlatforms) api.toast('success', 'Новый рекорд в «Дудл Джампе»!');
+        } catch (err) {
+            logError('не удалось записать результат дудл джампа', err);
+        }
+    }
+
+    function restart() {
+        state = newGame();
+        applyInput();
+        manualPaused = false;
+        autoPaused = false;
+        lastFrame = null;
+        overRecorded = false;
+        overlay.style.display = 'none';
+        overlay.querySelector('.doodlejump-over-content').innerHTML = '';
+        try {
+            recordPlayed(settings.stats);
+            api.save();
+            api.renderAllStats();
+        } catch (e) {
+            logError('не удалось обновить статистику дудл джампа при рестарте', e);
+        }
+        updateHeader();
+        updateStatus();
+        view.draw(state);
+    }
+
+    function onFrame(now) {
+        // Правило 7 контракта: кадр, уже стоящий в очереди, обязан проверить, жив ли
+        // экран, — cancelAnimationFrame его не догонит.
+        if (destroyed) return;
+        if (lastFrame === null) lastFrame = now;
+        const dt = now - lastFrame;
+        lastFrame = now;
+
+        if (!paused() && state.alive) {
+            // Сложность и движущиеся платформы — живые настройки: генератор перечитывает
+            // их на каждом достраивании поля, так что переключатель в панели действует на
+            // идущую партию, а не со следующей.
+            setDifficulty(state, settings.difficulty);
+            setMovingPlatforms(state, settings.movingPlatforms !== false);
+            const res = advance(state, dt);
+            if (res.fell) {
+                showOver();
+                record();
+            }
+        }
+
+        updateHeader();
+        updateStatus();
+        view.draw(state);
+        rafId = requestAnimationFrame(onFrame);
+    }
+
+    const keyboard = attachKeyboard({
+        onInput: (dir) => {
+            keyDir = dir;
+            applyInput();
+        },
+        onPause: () => {
+            manualPaused = !manualPaused;
+            updateStatus();
+        },
+        onRestart: () => {
+            if (!state.alive) restart();
+        },
+    });
+
+    // Уходя со вкладки — пауза: физика тут непрерывная, и без паузы первый кадр после
+    // возврата пришёл бы с огромным dt. Накопитель advance() его обрезает, но фигурка всё
+    // равно проделала бы восемь подшагов вслепую — честнее просто встать.
+    function resume() {
+        autoPaused = false;
+        lastFrame = null;
+        state.accumulatorMs = 0;
+        updateStatus();
+    }
+    function onVisibility() {
+        if (document.hidden) {
+            autoPaused = true;
+            updateStatus();
+        } else {
+            resume();
+        }
+    }
+    function onBlur() {
+        autoPaused = true;
+        // keyup зажатой клавиши после ухода со вкладки не придёт — снимаем флаги сами.
+        keyboard.release();
+        buttons.release();
+        updateStatus();
+    }
+    function onFocus() {
+        resume();
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+
+    // «Сыграно» растёт в момент старта заезда, а не при его конце: брошенные партии иначе
+    // нигде бы не отражались.
+    try {
+        recordPlayed(settings.stats);
+        api.save();
+        api.renderAllStats();
+    } catch (e) {
+        logError('не удалось обновить статистику дудл джампа при старте', e);
+    }
+
+    applyVisibility();
+    updateHeader();
+    updateStatus();
+    view.draw(state);
+    rafId = requestAnimationFrame(onFrame);
+
+    return {
+        // Настройки правят в другой панели при открытом экране: показ кнопок — чисто
+        // визуальная вещь, её и подхватываем здесь (сложность живая сама по себе).
+        refresh() {
+            if (destroyed) return;
+            applyVisibility();
+        },
+        destroy() {
+            if (destroyed) return;
+            destroyed = true;
+            if (rafId) cancelAnimationFrame(rafId);
+            keyboard.destroy();
+            buttons.destroy();
+            document.removeEventListener('visibilitychange', onVisibility);
+            window.removeEventListener('blur', onBlur);
+            window.removeEventListener('focus', onFocus);
+            root.innerHTML = '';
+        },
+    };
+}

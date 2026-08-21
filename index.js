@@ -11,6 +11,7 @@ import minesweeperGame from './src/games/minesweeper/index.js';
 import nonogramGame from './src/games/nonogram/index.js';
 import crosswordGame from './src/games/crossword/index.js';
 import baldaGame from './src/games/balda/index.js';
+import doodlejumpGame from './src/games/doodlejump/index.js';
 import { initSettingsUI } from './src/shell/settings-ui.js';
 import { initSlashCommands, initWandButton } from './src/shell/launcher.js';
 import { refresh } from './src/shell/modal.js';
@@ -74,6 +75,7 @@ register(minesweeperGame);
 register(nonogramGame);
 register(crosswordGame);
 register(baldaGame);
+register(doodlejumpGame);
 
 jQuery(async () => {
     try {

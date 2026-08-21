@@ -7,7 +7,7 @@
 
 import { JSDOM } from 'jsdom';
 import { assert, assertEqual, report, test } from '../_harness.mjs';
-import { PLAYER_W, WORLD_W } from '../../src/games/doodlejump/core/engine.js';
+import { BOOST, PICKUP_W, PLAYER_W, WORLD_W } from '../../src/games/doodlejump/core/engine.js';
 
 const dom = new JSDOM(
     '<!doctype html><html><body><div id="extensionsMenu"></div></body></html>',
@@ -161,6 +161,12 @@ function playerX(pass) {
     const hit = fills.find((f) => f.pass === pass && Math.abs(f.w - PLAYER_PX) < 0.6);
     return hit ? hit.x : null;
 }
+function assertClose2(actual, expected, eps, message) {
+    if (!(Math.abs(actual - expected) <= eps)) {
+        throw new Error(`${message}: получено ${actual}, ожидалось ~${expected}`);
+    }
+}
+
 function lastPlayerX() {
     return playerX(mock2d.pass);
 }
@@ -515,13 +521,20 @@ test('renderSettings рисует выбор сложности и два чек
     moving.dispatchEvent(new dom.window.Event('change'));
     assertEqual(api.settings.movingPlatforms, false, 'платформы выключены');
 
+    const boosters = container.querySelector('#doodlejump_boosters');
+    assert(boosters, 'чекбокс бустеров на месте');
+    assertEqual(boosters.checked, true, 'по умолчанию включены');
+    boosters.checked = false;
+    boosters.dispatchEvent(new dom.window.Event('change'));
+    assertEqual(api.settings.boosters, false, 'бустеры выключены');
+
     const showButtons = container.querySelector('#doodlejump_show_buttons');
     assert(showButtons, 'чекбокс кнопок на месте');
     showButtons.checked = false;
     showButtons.dispatchEvent(new dom.window.Event('change'));
     assertEqual(api.settings.showButtons, false, 'кнопки выключены');
 
-    assertEqual(saved, 3, 'каждое изменение сохранено');
+    assertEqual(saved, 4, 'каждое изменение сохранено');
 });
 
 test('renderSettings падает на «обычную» при битой сложности из settings.json', () => {
@@ -611,12 +624,51 @@ await test('view красит типы платформ по-разному, р�
     view.destroy();
 });
 
+await test('view рисует бустеры разными силуэтами, а полёт — полоской остатка', async () => {
+    const { createView } = await import('../../src/games/doodlejump/ui/view.js');
+    const view = createView();
+    const state = {
+        cameraY: 0,
+        player: { x: 180, y: 200, facing: 1, boost: null },
+        platforms: [{ id: 1, x: 170, y: 260, w: 66, kind: 'normal' }],
+        pickups: [
+            { id: 2, kind: 'propeller', x: 40, y: 120, w: PICKUP_W },
+            { id: 3, kind: 'rocket', x: 260, y: 120, w: PICKUP_W },
+            { id: 4, kind: 'rocket', x: 150, y: 120, w: PICKUP_W, taken: true },
+        ],
+    };
+
+    fills.length = 0;
+    view.draw(state);
+    // Заливки предмета: в его колонке и на его высоте — иначе в выборку попала бы
+    // платформа, стоящая ниже в той же колонке.
+    const atX = (x) => fills.filter((f) => f.x >= x * SCALE - 0.6
+        && f.x < (x + PICKUP_W) * SCALE + 0.6
+        && f.y < 200 * SCALE);
+    const propeller = atX(40);
+    const rocket = atX(260);
+    assert(propeller.length >= 2, 'пропеллер нарисован не одним прямоугольником');
+    assert(rocket.length >= 4, 'у ракеты корпус, хвост и два крыла');
+    assertEqual(new Set([propeller[0].style, rocket[0].style]).size, 2, 'у пропеллера и ракеты разные цвета');
+    assertEqual(atX(150).length, 0, 'подобранный предмет не рисуется');
+
+    // Полоска остатка — над фигуркой, ровно две заливки: подложка и заполнение.
+    fills.length = 0;
+    state.player.boost = { kind: 'rocket', msLeft: BOOST.rocket.ms / 2, vy: BOOST.rocket.vy };
+    view.draw(state);
+    const gauge = fills.filter((f) => f.y < state.player.y * SCALE && f.x === 180 * SCALE);
+    assertEqual(gauge.length, 2, 'подложка и заполнение');
+    assertClose2(gauge[1].w, gauge[0].w / 2, 0.6, 'заполнение — половина: полёт пройден наполовину');
+
+    view.destroy();
+});
+
 // --- createDrag напрямую: арифметика намерения и снятие слушателей.
 //
 // Через смонтированный экран это не проверить: destroy() уносит канвас из дерева вместе
 // со слушателями, и «слушателя больше нет» стало бы неотличимо от «элемента больше нет».
 
-test('createDrag: намерение — доля расстояния до пальца, а destroy снимает слушатели', async () => {
+await test('createDrag: намерение — доля расстояния до пальца, а destroy снимает слушатели', async () => {
     const { createDrag } = await import('../../src/games/doodlejump/ui/controls.js');
     const canvas = stubRect(document.createElement('canvas'));
     document.body.appendChild(canvas);

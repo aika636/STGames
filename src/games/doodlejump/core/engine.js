@@ -68,6 +68,25 @@ export const SPRING_GAP_BONUS = 1.7;
 // платформа рассыплется.
 export const CRUMBLE_AT = 0.45;
 
+// --- Бустеры ----------------------------------------------------------------------
+
+// Один механизм, два облика: пропеллер — короткий подъём, ракета — длинный и быстрый.
+// Разделять их в ядре нечем и незачем: это одна сущность с параметрами «скорость» и
+// «длительность», разница видна только в отрисовке и в цифрах ниже.
+//
+// Высоты подобраны от MAX_JUMP_HEIGHT = 184 wu: пропеллер поднимает примерно на 5 обычных
+// прыжков, ракета — примерно на 15. Больше — и заезд превращается в кинематограф.
+export const BOOST = Object.freeze({
+    propeller: Object.freeze({ vy: -700, ms: 1400 }),
+    rocket: Object.freeze({ vy: -1250, ms: 2200 }),
+});
+
+export const PICKUP_W = 26;
+export const PICKUP_H = 26;
+
+// Ракета реже пропеллера: она сильнее, и встречать её через раз было бы скучно.
+export const ROCKET_SHARE = 0.35;
+
 // --- Сложность --------------------------------------------------------------------
 
 // Сложность правит только генератор (зазор, ширина, доли типов платформ), а не геометрию
@@ -76,21 +95,23 @@ export const CRUMBLE_AT = 0.45;
 //
 // movingChance/crumblingChance/springChance — доли одного и того же броска, поэтому их
 // сумма обязана оставаться заметно меньше единицы: остаток — это обычные платформы.
+// boostChance стоит особняком: это отдельный бросок на «положить ли бустер на обычную
+// платформу этажа», с другими типами он не конкурирует.
 export const DIFFICULTY = Object.freeze({
     easy: Object.freeze({
         gapMin: 0.30, gapMax: 0.58, width: 82,
         movingChance: 0.06, movingMin: 40, movingMax: 70,
-        crumblingChance: 0.05, springChance: 0.04,
+        crumblingChance: 0.05, springChance: 0.04, boostChance: 0.05,
     }),
     normal: Object.freeze({
         gapMin: 0.44, gapMax: 0.78, width: 66,
         movingChance: 0.16, movingMin: 55, movingMax: 95,
-        crumblingChance: 0.14, springChance: 0.07,
+        crumblingChance: 0.14, springChance: 0.07, boostChance: 0.045,
     }),
     hard: Object.freeze({
         gapMin: 0.58, gapMax: 0.94, width: 52,
         movingChance: 0.30, movingMin: 75, movingMax: 115,
-        crumblingChance: 0.26, springChance: 0.10,
+        crumblingChance: 0.26, springChance: 0.10, boostChance: 0.04,
     }),
 });
 
@@ -108,6 +129,7 @@ export function createGame({
     worldH = WORLD_H,
     difficulty = DEFAULT_DIFFICULTY,
     movingPlatforms = true,
+    boosters = true,
 } = {}) {
     const rules = rulesFor(difficulty);
     const startY = worldH - 120;
@@ -122,14 +144,22 @@ export function createGame({
             vx: 0,
             vy: 0,
             facing: 1,
+            // null или { kind, msLeft, vy }: пока не null — гравитации нет, платформы
+            // не ловят, фигурка летит вверх с постоянной скоростью.
+            boost: null,
         },
         platforms: [],
+        // Бустеры — свой массив, а не платформы: у них другая геометрия и другое
+        // поведение при столкновении (подбираются в любом направлении движения, а не
+        // только при падении сверху).
+        pickups: [],
         cameraY: 0,
         score: 0,
         landings: 0,
         alive: true,
         difficulty,
         movingPlatforms,
+        boosters,
         nextPlatformY: startY,
         // Стоит ли на границе нетронутого поля пружина: только над ней генератор
         // разрешает себе раздутый зазор. Стартовая платформа обычная — значит, нет.
@@ -177,6 +207,13 @@ export function setMovingPlatforms(state, enabled) {
     state.movingPlatforms = !!enabled;
 }
 
+// Живая настройка, как и движущиеся платформы: генератор перечитывает её на каждом
+// достраивании поля. Уже разложенные бустеры при выключении не исчезают — переписывать
+// настеленное поле мы нигде не делаем.
+export function setBoosters(state, enabled) {
+    state.boosters = !!enabled;
+}
+
 // --- Генерация платформ -----------------------------------------------------------
 
 // Рассыпающаяся платформа ставится в противоположной половине экрана от опоры этажа: так
@@ -205,6 +242,10 @@ export function ensurePlatformsAbove(state, targetY) {
     const rng = state.rng;
     // Страховка от зацикливания, если targetY уехал абсурдно далеко за один вызов
     // (например, из-за огромного dtMs после свёрнутой вкладки).
+    //
+    // Полёту на бустере страховка не мешает, хотя подъём там втрое быстрее прыжка: за
+    // подшаг камера проходит не больше |vy|·dt ≈ 10 wu, а минимальный зазор этажа — 66 wu,
+    // то есть один вызов достраивает от силы один этаж. Запас 4096 не приблизить.
     let guard = 4096;
     while (state.nextPlatformY > targetY && guard-- > 0) {
         let gap = MAX_GAP * (rules.gapMin + rng() * (rules.gapMax - rules.gapMin));
@@ -250,6 +291,21 @@ export function ensurePlatformsAbove(state, targetY) {
 
         if (crumbling) state.platforms.push(crumbling);
         state.platforms.push(anchor);
+
+        // Бустер кладём НА обычную платформу этажа, а не в пустоту: так он собираем по
+        // построению — приземлился на эту платформу, значит подобрал. Движущаяся не
+        // годится (предмет за ней не поедет), пружина и так подбрасывает, а на
+        // рассыпающейся бустер пропадал бы вместе с ней.
+        if (state.boosters && anchor.kind === 'normal' && rng() < rules.boostChance) {
+            state.pickups.push({
+                id: state.nextId++,
+                kind: rng() < ROCKET_SHARE ? 'rocket' : 'propeller',
+                x: anchor.x + (anchor.w - PICKUP_W) / 2,
+                y: anchor.y - PICKUP_H - 2,
+                w: PICKUP_W,
+            });
+        }
+
         state.nextPlatformY = y;
         state.springBelow = anchor.kind === 'spring';
     }
@@ -290,7 +346,7 @@ function isSolid(platform) {
 // физику впритык, без накопителя и таймеров. Возвращает тиковые флаги для звука и
 // статистики — по образцу step() змейки.
 export function stepOnce(state) {
-    const result = { landed: false, brokePlatform: false, fell: false };
+    const result = { landed: false, brokePlatform: false, fell: false, boosted: null };
     if (!state.alive) return result;
 
     const dt = STEP_MS / 1000;
@@ -331,12 +387,29 @@ export function stepOnce(state) {
     // Вертикаль: свип по y от прежней нижней грани к новой. Point-in-rect на одном кадре
     // здесь не годится — при большой скорости падения фигурка проскочила бы тонкую
     // платформу насквозь (классическое туннелирование).
+    const prevY = player.y;
     const prevBottom = player.y + PLAYER_H;
-    player.vy += GRAVITY * dt;
-    player.y += player.vy * dt;
+    const boost = player.boost;
+    if (boost) {
+        // Полёт: гравитации нет, скорость постоянная, платформы не ловят — фигурка идёт
+        // сквозь них. Остаток тает ровно на длительность подшага, поэтому полёт кончается
+        // одинаково при любой частоте кадров.
+        player.vy = boost.vy;
+        player.y += player.vy * dt;
+        boost.msLeft -= STEP_MS;
+        if (boost.msLeft <= 0) {
+            player.boost = null;
+            // Выпадаем из полёта с нулевой скоростью, а не с набранной: иначе фигурка
+            // продолжала бы лететь вверх ещё полсекунды по инерции.
+            player.vy = 0;
+        }
+    } else {
+        player.vy += GRAVITY * dt;
+        player.y += player.vy * dt;
+    }
     const bottom = player.y + PLAYER_H;
 
-    if (player.vy > 0) {
+    if (!boost && player.vy > 0) {
         // Из всех платформ, попавших в свип, берём верхнюю (меньший y) — по пути вниз
         // именно её фигурка встретит первой.
         let hit = null;
@@ -363,6 +436,24 @@ export function stepOnce(state) {
         }
     }
 
+    // Бустеры подбираются в любом направлении движения, а не только при падении сверху:
+    // это предмет, а не опора. Свип и по y (полоса от прежней позиции к новой), и по x —
+    // на скорости ракеты фигурка иначе прошивала бы предмет насквозь.
+    if (state.pickups.length) {
+        const top = Math.min(prevY, player.y);
+        const low = Math.max(prevY, player.y) + PLAYER_H;
+        for (const pickup of state.pickups) {
+            if (pickup.taken) continue;
+            if (low < pickup.y || top > pickup.y + PICKUP_H) continue;
+            if (!overlapsXSweep(prevX, rawX, pickup)) continue;
+            pickup.taken = true;
+            const spec = BOOST[pickup.kind] || BOOST.propeller;
+            player.boost = { kind: pickup.kind, msLeft: spec.ms, vy: spec.vy };
+            result.boosted = pickup.kind;
+            break; // два бустера за один подшаг — не складываем, второй подождёт
+        }
+    }
+
     // Камера едет только вверх. Счёт — пройденная ею высота, поэтому спуск после промаха
     // его не уменьшает.
     const anchor = player.y - state.world.h * CAMERA_ANCHOR;
@@ -375,6 +466,9 @@ export function stepOnce(state) {
         const limit = state.cameraY + state.world.h + PLATFORM_H * 2;
         if (state.platforms.length > 8) {
             state.platforms = state.platforms.filter((platform) => platform.y <= limit);
+        }
+        if (state.pickups.length) {
+            state.pickups = state.pickups.filter((pickup) => !pickup.taken && pickup.y <= limit);
         }
     }
 
@@ -391,7 +485,7 @@ export function stepOnce(state) {
 // Единственная точка входа для игрового времени: ui/ зовёт её на каждом rAF, а сколько
 // подшагов прогнать — решает сама. Флаги подшагов схлопываются в один результат.
 export function advance(state, dtMs) {
-    const result = { landed: false, brokePlatform: false, fell: false, steps: 0 };
+    const result = { landed: false, brokePlatform: false, fell: false, boosted: null, steps: 0 };
     if (!state.alive) return result;
 
     state.accumulatorMs += Number.isFinite(dtMs) && dtMs > 0 ? dtMs : 0;
@@ -406,6 +500,7 @@ export function advance(state, dtMs) {
         result.steps += 1;
         if (step.landed) result.landed = true;
         if (step.brokePlatform) result.brokePlatform = true;
+        if (step.boosted) result.boosted = step.boosted;
         if (step.fell) result.fell = true;
     }
 

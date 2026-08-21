@@ -2,10 +2,11 @@
 // Запуск: node tests/doodlejump/engine.test.mjs
 
 import {
-    CAMERA_ANCHOR, DIFFICULTY, GRAVITY, JUMP_VELOCITY, MAX_GAP, MAX_JUMP_HEIGHT, MOVE_SPEED,
-    PLAYER_H, PLAYER_W, SPRING_GAP_BONUS, SPRING_MULT, STEP_MS, WORLD_W,
-    advance, createGame, ensurePlatformsAbove, setDifficulty, setInput, setMovingPlatforms,
-    stepOnce,
+    BOOST, CAMERA_ANCHOR, DIFFICULTY, GRAVITY, JUMP_VELOCITY, MAX_GAP, MAX_JUMP_HEIGHT,
+    MOVE_SPEED, PICKUP_H, PICKUP_W, PLAYER_H, PLAYER_W, SPRING_GAP_BONUS, SPRING_MULT,
+    STEP_MS, WORLD_W,
+    advance, createGame, ensurePlatformsAbove, setBoosters, setDifficulty, setInput,
+    setMovingPlatforms, stepOnce,
 } from '../../src/games/doodlejump/core/engine.js';
 import { mulberry32 } from '../../src/games/doodlejump/core/rng.js';
 import {
@@ -529,6 +530,147 @@ test('статистика: resetStats чистит объект на месте
     assert(same === stats, 'вернулся тот же объект');
     assertEqual(Object.keys(stats).length, 0, 'ключей после сброса');
     assertEqual(readStats(stats).played, 0, 'счётчики обнулены');
+});
+
+// --- Бустеры (docs/plan-doodlejump-fixes.md §F) -------------------------------------
+
+// Голое состояние с одним предметом под рукой: генератор в этих тестах не участвует,
+// проверяется физика подбора и полёта.
+function withPickup(kind, { x = 180, y = 400 } = {}) {
+    const state = bareState();
+    state.pickups = [{ id: 1, kind, x, y, w: PICKUP_W }];
+    state.player.x = x;
+    state.player.y = y;
+    return state;
+}
+
+test('подбор ставит бустер и объявляется тиковым флагом', () => {
+    const state = withPickup('propeller');
+    assertEqual(state.player.boost, null, 'до подбора бустера нет');
+
+    const res = stepOnce(state);
+    assertEqual(res.boosted, 'propeller', 'флаг для звука и статистики');
+    assert(state.player.boost, 'бустер стоит');
+    assertEqual(state.player.boost.kind, 'propeller', 'облик запомнен');
+    assertEqual(state.player.boost.vy, BOOST.propeller.vy, 'скорость из таблицы');
+});
+
+test('подобранный предмет больше не подбирается', () => {
+    const state = withPickup('rocket');
+    stepOnce(state);
+    state.player.boost = null; // как будто полёт уже кончился
+    const res = stepOnce(state);
+    assertEqual(res.boosted, null, 'второй раз тот же предмет не срабатывает');
+});
+
+test('во время полёта платформы не ловят — фигурка идёт сквозь', () => {
+    const state = withPickup('rocket');
+    stepOnce(state);
+    // Платформа ровно под фигуркой: без бустера это было бы приземление.
+    state.platforms = [{ id: 9, x: state.player.x - 10, y: state.player.y + PLAYER_H + 1, w: 120, kind: 'normal' }];
+    state.player.vy = 500; // и даже если бы она падала
+
+    const res = stepOnce(state);
+    assert(!res.landed, 'приземления во время полёта нет');
+    assertEqual(state.landings, 0, 'счётчик платформ не тронут');
+    assertEqual(state.player.vy, BOOST.rocket.vy, 'скорость держит бустер, а не гравитация');
+});
+
+test('полёт длится свою длительность и кончается с нулевой скоростью', () => {
+    const state = withPickup('propeller');
+    stepOnce(state); // подшаг подбора: остаток ставится в конце него, тратить нечего
+
+    let steps = 0;
+    while (state.player.boost && steps < 10_000) {
+        stepOnce(state);
+        steps += 1;
+    }
+    assertEqual(state.player.boost, null, 'полёт кончился');
+    assertEqual(state.player.vy, 0, 'выпали из полёта без набранной скорости');
+    // Остаток тает вычитанием, поэтому последний подшаг может уйти в минус на плавающую
+    // погрешность — сверяем длительность с точностью до подшага, а не до миллисекунды.
+    assertClose(steps * STEP_MS, BOOST.propeller.ms, STEP_MS + 1e-9, 'длительность полёта');
+});
+
+test('после полёта под фигуркой есть платформа в пределах MAX_GAP', () => {
+    for (const difficulty of ['easy', 'normal', 'hard']) {
+        for (const seed of [3, 11, 909]) {
+            const state = createGame({ rng: mulberry32(seed), difficulty });
+            // Долгий полёт вручную: генератор обязан успевать за подъёмом сам, через
+            // ту же камеру, что и в обычной игре.
+            state.player.boost = { kind: 'rocket', msLeft: BOOST.rocket.ms, vy: BOOST.rocket.vy };
+            while (state.player.boost && state.alive) stepOnce(state);
+
+            const bottom = state.player.y + PLAYER_H;
+            const below = state.platforms
+                .filter((p) => p.kind !== 'crumbling' && p.y >= bottom)
+                .sort((a, b) => a.y - b.y)[0];
+            assert(below, `${difficulty}/${seed}: под точкой окончания полёта есть опора`);
+            // Потолок здесь — раздутый пружиной зазор, а не MAX_GAP: полёт кончается в
+            // произвольной точке лестницы, в том числе над «пружинным» этажом. Это не
+            // послабление — вниз фигурка падает даром, ограничение MAX_GAP про подъём.
+            // Важно ровно одно: под точкой окончания полёта пусто не бывает.
+            const ceiling = MAX_GAP * SPRING_GAP_BONUS;
+            assert(
+                below.y - bottom <= ceiling + 1e-9,
+                `${difficulty}/${seed}: до опоры ${below.y - bottom} wu, потолок ${ceiling}`,
+            );
+        }
+    }
+});
+
+// Todo предполагал, что камере во время полёта нужна своя скорость. Не нужна: она
+// привязана к фигурке (CAMERA_ANCHOR) и отстать физически не может. Тест фиксирует это,
+// чтобы никто не дописал лишнего.
+test('во время полёта фигурка остаётся на экране — камере своей скорости не нужно', () => {
+    const state = createGame({ rng: mulberry32(5) });
+    state.player.boost = { kind: 'rocket', msLeft: BOOST.rocket.ms, vy: BOOST.rocket.vy };
+    while (state.player.boost && state.alive) {
+        stepOnce(state);
+        const screenY = state.player.y - state.cameraY;
+        assert(screenY >= 0, `верхний край не ушёл выше экрана: ${screenY}`);
+        assert(screenY + PLAYER_H <= state.world.h, `нижний край в экране: ${screenY}`);
+    }
+});
+
+test('выключатель убирает бустеры из генератора, а сид держит их воспроизводимость', () => {
+    const off = createGame({ rng: mulberry32(42), boosters: false });
+    ensurePlatformsAbove(off, -20000);
+    assertEqual(off.pickups.length, 0, 'выключено — предметов нет');
+
+    const on = createGame({ rng: mulberry32(42), boosters: true });
+    ensurePlatformsAbove(on, -20000);
+    assert(on.pickups.length > 5, `включено — предметы генерируются: ${on.pickups.length}`);
+    assert(on.pickups.some((p) => p.kind === 'rocket'), 'ракеты встречаются');
+    assert(on.pickups.some((p) => p.kind === 'propeller'), 'пропеллеры встречаются');
+
+    // Тот же сид — та же партия: предметы идут через тот же rng, что и платформы.
+    const again = createGame({ rng: mulberry32(42), boosters: true });
+    ensurePlatformsAbove(again, -20000);
+    assertEqual(
+        JSON.stringify(again.pickups),
+        JSON.stringify(on.pickups),
+        'партия по сиду воспроизводится',
+    );
+
+    // Живой выключатель действует на новое поле, уже настеленное не переписывает.
+    const wasThere = on.pickups.length;
+    setBoosters(on, false);
+    ensurePlatformsAbove(on, -40000);
+    assertEqual(on.pickups.length, wasThere, 'после выключения новых предметов не прибавилось');
+});
+
+test('бустер лежит на обычной платформе, а не в пустоте', () => {
+    const state = createGame({ rng: mulberry32(7) });
+    ensurePlatformsAbove(state, -20000);
+    assert(state.pickups.length > 5, 'предметы есть');
+
+    for (const pickup of state.pickups) {
+        assert(pickup.x >= 0 && pickup.x + PICKUP_W <= WORLD_W, 'предмет внутри экрана');
+        const under = state.platforms.find((p) => Math.abs(p.y - (pickup.y + PICKUP_H + 2)) < 1e-6);
+        assert(under, `под предметом на y=${pickup.y} есть платформа`);
+        assertEqual(under.kind, 'normal', 'и она обычная — движущаяся уехала бы из-под предмета');
+    }
 });
 
 report('doodlejump engine');

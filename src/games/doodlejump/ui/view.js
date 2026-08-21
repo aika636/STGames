@@ -15,7 +15,7 @@
 // color-mix: до канваса значение доезжает строкой, а color-mix() в ней fillStyle не
 // понимает — вместо цвета вышел бы прозрачный чёрный.
 
-import { PLATFORM_H, PLAYER_H, PLAYER_W, WORLD_W } from '../core/engine.js';
+import { BOOST, PICKUP_H, PICKUP_W, PLATFORM_H, PLAYER_H, PLAYER_W, WORLD_W } from '../core/engine.js';
 
 // Фолбэки размера — только для jsdom и для первого кадра до раскладки: в браузере
 // clientWidth/clientHeight приходят из CSS (.doodlejump-stage задаёт aspect-ratio).
@@ -99,6 +99,43 @@ export function createView() {
         }
     }
 
+    // Бустеры — теми же примитивами, что и всё остальное. Пропеллер: тельце и лопасть
+    // поперёк; ракета: корпус и хвостовое пламя. Форма важнее цвета — на монохромной теме
+    // цвета типов сближаются, а силуэт остаётся разным.
+    function drawPickup(kind, x, top, scale, color) {
+        const w = PICKUP_W * scale;
+        const h = PICKUP_H * scale;
+        ctx2d.fillStyle = color;
+        if (kind === 'rocket') {
+            fillBox(x + w * 0.3, top, w * 0.4, h * 0.75, w * 0.2);
+            ctx2d.fillRect(x + w * 0.42, top + h * 0.75, w * 0.16, h * 0.25);
+            ctx2d.fillRect(x + w * 0.1, top + h * 0.45, w * 0.15, h * 0.3);
+            ctx2d.fillRect(x + w * 0.75, top + h * 0.45, w * 0.15, h * 0.3);
+            return;
+        }
+        fillBox(x + w * 0.35, top + h * 0.3, w * 0.3, h * 0.7, w * 0.15);
+        ctx2d.fillRect(x, top + h * 0.15, w, Math.max(1, h * 0.12));
+    }
+
+    // Пока бустер активен — полоска остатка над фигуркой: без неё игрок не понимает,
+    // сколько ещё лететь, и не успевает прицелиться к концу полёта.
+    function drawBoostGauge(player, py, scale, color) {
+        const boost = player.boost;
+        const spec = BOOST[boost.kind];
+        if (!spec) return;
+        const left = Math.max(0, Math.min(1, boost.msLeft / spec.ms));
+        const w = PLAYER_W * scale;
+        const h = Math.max(2, 4 * scale);
+        // py приходит в мировых единицах, как и в drawPlayer, — масштабируем здесь.
+        const x = player.x * scale;
+        const top = py * scale - h * 2;
+        ctx2d.fillStyle = color;
+        ctx2d.globalAlpha = 0.3;
+        ctx2d.fillRect(x, top, w, h);
+        ctx2d.globalAlpha = 1;
+        ctx2d.fillRect(x, top, w * left, h);
+    }
+
     function draw(state) {
         // jsdom без пакета canvas возвращает null — тогда отрисовка становится no-op,
         // а экран продолжает жить: то же осознанное ограничение, что у змейки.
@@ -135,6 +172,8 @@ export function createView() {
         const movingColor = pick('--stg-doodlejump-platform-moving', '#7fae5a');
         const crumblingColor = pick('--stg-doodlejump-platform-crumbling', '#b58a4a');
         const springColor = pick('--stg-doodlejump-spring', '#e0c34d');
+        const propellerColor = pick('--stg-doodlejump-propeller', '#7bc6c6');
+        const rocketColor = pick('--stg-doodlejump-rocket', '#d1603d');
 
         const cameraY = state.cameraY;
         const platformH = PLATFORM_H * scale;
@@ -162,6 +201,20 @@ export function createView() {
             else if (platform.kind === 'spring') drawSpring(px, top, pw, scale, platformColor);
         }
 
+        // Бустеры рисуются после платформ и до фигурки: предмет лежит на платформе, а
+        // фигурка проходит поверх него.
+        for (const pickup of state.pickups || []) {
+            if (pickup.taken) continue;
+            if (pickup.y < worldTop - PICKUP_H || pickup.y > worldBottom) continue;
+            drawPickup(
+                pickup.kind,
+                pickup.x * scale,
+                (pickup.y - cameraY) * scale,
+                scale,
+                pickup.kind === 'rocket' ? rocketColor : propellerColor,
+            );
+        }
+
         const player = state.player;
         const py = player.y - cameraY;
         drawPlayer(player.x, py, player.facing, scale, playerColor, eyeColor);
@@ -172,6 +225,10 @@ export function createView() {
             drawPlayer(player.x - WORLD_W, py, player.facing, scale, playerColor, eyeColor);
         } else if (player.x < 0) {
             drawPlayer(player.x + WORLD_W, py, player.facing, scale, playerColor, eyeColor);
+        }
+
+        if (player.boost) {
+            drawBoostGauge(player, py, scale, player.boost.kind === 'rocket' ? rocketColor : propellerColor);
         }
     }
 

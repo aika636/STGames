@@ -239,6 +239,8 @@
  *   --stg-snake-*        цвета канваса змейки — только литералы и var(), без color-mix:
  *                        их читает JS через getComputedStyle, а color-mix в значении
  *                        пользовательского свойства до JS доезжает неразобранным.
+ *   --stg-doodlejump-*   цвета канваса «Дудл Джампа» (фигурка, её глаза, типы платформ) —
+ *                        то же ограничение, что у --stg-snake-*: только литералы и var().
  *
  * Значения по умолчанию — режим theme: ровно то, что было до появления палитры.
  */
@@ -268,6 +270,16 @@
     --stg-snake-body: var(--SmartThemeQuoteColor, #6ca0dc);
     --stg-snake-grid: var(--SmartThemeBorderColor, #888);
     --stg-snake-food: #e0533d;
+
+    /* «Дудл Джамп». Фигурка и обычная платформа — из темы, цвета типов платформ несут
+       смысл (какая платформа под ногами) и потому заданы литералами во всех режимах:
+       перекрасить их по палитре значило бы стереть различие. */
+    --stg-doodlejump-player: var(--SmartThemeQuoteColor, #6ca0dc);
+    --stg-doodlejump-player-eye: var(--SmartThemeBlurTintColor, #14161b);
+    --stg-doodlejump-platform: var(--SmartThemeBorderColor, #888);
+    --stg-doodlejump-platform-moving: #7fae5a;
+    --stg-doodlejump-platform-crumbling: #b58a4a;
+    --stg-doodlejump-spring: #e0c34d;
 }
 
 /* Тёмная палитра. Не «тема ST потемнее», а свой набор: фон окна чуть светлее чёрного,
@@ -291,6 +303,14 @@
     --stg-snake-body: #5b8ec9;
     --stg-snake-grid: rgba(255, 255, 255, 0.14);
     --stg-snake-food: #e0533d;
+
+    /* Фигурка светлая, глаза — цвета фона окна: на тёмном поле иначе не читаются. */
+    --stg-doodlejump-player: #9ccbff;
+    --stg-doodlejump-player-eye: #14161b;
+    --stg-doodlejump-platform: #8d919b;
+    --stg-doodlejump-platform-moving: #7fae5a;
+    --stg-doodlejump-platform-crumbling: #b58a4a;
+    --stg-doodlejump-spring: #e0c34d;
 }
 
 /* Светлая палитра. Поле белое, а подложка окна — тёплый серый: белое поле на белом окне
@@ -313,6 +333,14 @@
     --stg-snake-body: #5b93cf;
     --stg-snake-grid: rgba(0, 0, 0, 0.16);
     --stg-snake-food: #c0392b;
+
+    /* На белом поле фигурка тёмная, глаза — светлые: та же пара наоборот. */
+    --stg-doodlejump-player: #2f6fb5;
+    --stg-doodlejump-player-eye: #ffffff;
+    --stg-doodlejump-platform: #6f737b;
+    --stg-doodlejump-platform-moving: #4f7c34;
+    --stg-doodlejump-platform-crumbling: #8a6528;
+    --stg-doodlejump-spring: #b08f14;
 }
 
 /* Своя палитра — своя подложка: без неё шапка окна и подписи остались бы цветом темы ST
@@ -387,7 +415,8 @@
 .minesweeper-root:focus,
 .nonogram-root:focus,
 .crossword-root:focus,
-.balda-root:focus {
+.balda-root:focus,
+.doodlejump-root:focus {
     outline: none;
 }
 
@@ -968,6 +997,134 @@
 .snake-status {
     font-size: 0.85em;
     opacity: 0.7;
+}
+
+/* --- Дудл Джамп --- */
+
+.doodlejump-root {
+    /* В отличие от квадратных полей судоку/змейки ведущий размер тут высота: поле
+       портретное (400×640 wu), и в попапе его ограничивает не ширина, а вертикаль —
+       под полем ещё кнопки и строка статуса, над ним шапка. Ширина выводится из высоты
+       через aspect-ratio, а 86vw*1.6 не даёт полю вылезти вбок на узком экране. */
+    --doodlejump-height: clamp(300px, min(58vh, calc(86vw * 1.6)), 560px);
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
+    color: var(--stg-fg);
+}
+
+.doodlejump-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    max-width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+
+.doodlejump-stage {
+    position: relative;
+    height: var(--doodlejump-height);
+    /* 400:640 мира — ровно 5:8. Ширину считает браузер, поэтому пропорция сохраняется
+       и тогда, когда высоту урезал clamp. */
+    aspect-ratio: 5 / 8;
+    max-width: 100%;
+}
+
+.doodlejump-view {
+    width: 100%;
+    height: 100%;
+}
+
+.doodlejump-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid var(--stg-line-strong);
+    border-radius: 10px;
+    background-color: var(--stg-surface);
+    touch-action: none;
+}
+
+.doodlejump-buttons {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 44px;
+}
+
+.doodlejump-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 76px;
+    min-height: 44px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--stg-line-strong);
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.doodlejump-btn:hover {
+    border-color: var(--stg-accent);
+    background-color: var(--stg-tint-soft);
+}
+
+/* Оверлей поверх поля (не корня): затемняет канвас, не трогая шапку и кнопки. */
+.doodlejump-over {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background-color: rgba(0, 0, 0, 0.55);
+    background-color: color-mix(in srgb, var(--stg-surface) 82%, transparent);
+    color: var(--stg-fg);
+}
+
+.doodlejump-over-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+}
+
+.doodlejump-status {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+@media (max-width: 500px) {
+    .doodlejump-root {
+        --doodlejump-height: min(60vh, calc(92vw * 1.6), 560px);
+        gap: 8px;
+    }
+
+    .doodlejump-header {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    /* На узком экране кнопки растут — попадать в них пальцем проще. */
+    .doodlejump-btn {
+        min-width: 92px;
+        min-height: 48px;
+    }
 }
 
 /* --- Окно игры: реверси --- */

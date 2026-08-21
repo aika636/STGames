@@ -294,6 +294,11 @@
     --stg-doodlejump-skin-crab: #e07a4d;
     --stg-doodlejump-skin-crab-limb: #f2a071;
     --stg-doodlejump-skin-moon: #f2e8b0;
+    --stg-doodlejump-skin-frog: #6cbf5a;
+    --stg-doodlejump-skin-frog-tongue: #e07a92;
+    --stg-doodlejump-skin-snowflake: #b6e3f5;
+    --stg-doodlejump-skin-pacman: #f2d34a;
+    --stg-doodlejump-skin-skull: #e6e2d4;
 }
 
 /* Тёмная палитра. Не «тема ST потемнее», а свой набор: фон окна чуть светлее чёрного,
@@ -338,6 +343,11 @@
     --stg-doodlejump-skin-crab: #ec8757;
     --stg-doodlejump-skin-crab-limb: #f7ae7e;
     --stg-doodlejump-skin-moon: #f6eec0;
+    --stg-doodlejump-skin-frog: #7bcf68;
+    --stg-doodlejump-skin-frog-tongue: #ea8ba2;
+    --stg-doodlejump-skin-snowflake: #c6ecff;
+    --stg-doodlejump-skin-pacman: #f6dc5f;
+    --stg-doodlejump-skin-skull: #efebde;
 }
 
 /* Светлая палитра. Поле белое, а подложка окна — тёплый серый: белое поле на белом окне
@@ -381,6 +391,11 @@
     --stg-doodlejump-skin-crab: #a8492a;
     --stg-doodlejump-skin-crab-limb: #c46a45;
     --stg-doodlejump-skin-moon: #8a6f18;
+    --stg-doodlejump-skin-frog: #2f7a2a;
+    --stg-doodlejump-skin-frog-tongue: #a83a55;
+    --stg-doodlejump-skin-snowflake: #2c6f96;
+    --stg-doodlejump-skin-pacman: #a87c10;
+    --stg-doodlejump-skin-skull: #5c5747;
 }
 
 /* Своя палитра — своя подложка: без неё шапка окна и подписи остались бы цветом темы ST
@@ -1158,7 +1173,7 @@
     position: absolute;
     inset: 0;
     display: flex;
-    /* Витрина из восьми плиток выше сцены на телефоне: центрируем не выравниванием, а
+    /* Витрина из двенадцати плиток выше сцены на телефоне: центрируем не выравниванием, а
        margin: auto у содержимого — при align-items: center переполнение обрезало бы
        верхние ряды, до которых уже не докрутить. */
     align-items: flex-start;
@@ -1182,8 +1197,8 @@
     text-align: center;
 }
 
-/* Сетка, а не flex-wrap: восемь плиток должны вставать ровными рядами одинаковой ширины,
-   а число колонок — считаться от ширины сцены (на 360×640 выходит три). */
+/* Сетка, а не flex-wrap: двенадцать плиток должны вставать ровными рядами одинаковой
+   ширины, а число колонок — считаться от ширины сцены (на 360×640 выходит три). */
 .doodlejump-shop-items {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
@@ -1254,16 +1269,23 @@
         min-height: 48px;
     }
 
-    /* Витрина на телефоне: плитка мельче, иначе восемь штук в три колонки уводят кнопку
-       «Закрыть» далеко за нижний край сцены. */
+    /* Витрина на телефоне: плитка мельче, иначе двенадцать штук уводят кнопку «Закрыть»
+       далеко за нижний край сцены. Порог 66px подобран под самую узкую сцену (360×640
+       даёт витрине 220px под плитки): при нём встаёт третья колонка, и двенадцать
+       скинов — это четыре ряда, а не шесть. */
     .doodlejump-shop-items {
-        grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
         gap: 6px;
     }
 
+    .doodlejump-shop-item {
+        padding: 4px;
+        gap: 2px;
+    }
+
     .doodlejump-shop-preview {
-        width: 52px;
-        height: 52px;
+        width: 46px;
+        height: 46px;
     }
 }
 

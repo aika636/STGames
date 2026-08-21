@@ -608,6 +608,63 @@ test('каждый скин рисуется обеими сторонами и 
     }
 });
 
+// Габарит w × h — это обещание скина: и поле, и превью в магазине отводят ему ровно
+// столько места, и всё, что нарисовано за краем, обрезается канвасом. Именно так «Месяц»
+// оказался в витрине надкушенным: заливка evenodd по двум окружностям красила ещё и кусок
+// выреза, торчащий за диск, и его срезал левый край превью. Поэтому мерим не «нарисовал
+// хоть что-то», а честный bounding box пути.
+//
+// Заглушка контекста считает крайние точки: прямоугольники и линии — по вершинам, дуги —
+// выборкой по реально пройденному сектору (учитывая направление обхода). Полную
+// окружность взять bbox'ом нельзя: у месяца вырез шире диска, но пройден он только внутри.
+const TAU = Math.PI * 2;
+function boundsRecorder() {
+    const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    const put = (x, y) => {
+        box.minX = Math.min(box.minX, x);
+        box.maxX = Math.max(box.maxX, x);
+        box.minY = Math.min(box.minY, y);
+        box.maxY = Math.max(box.maxY, y);
+    };
+    return {
+        box,
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 0,
+        beginPath() {},
+        fill() {},
+        stroke() {},
+        moveTo: put,
+        lineTo: put,
+        fillRect(x, y, w, h) { put(x, y); put(x + w, y + h); },
+        arc(cx, cy, r, from = 0, to = TAU, ccw = false) {
+            let sweep = ccw ? from - to : to - from;
+            sweep = sweep >= TAU ? TAU : ((sweep % TAU) + TAU) % TAU;
+            if (ccw) sweep = -sweep;
+            for (let i = 0; i <= 240; i++) {
+                const a = from + (sweep * i) / 240;
+                put(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+            }
+        },
+    };
+}
+
+test('ни один скин не рисует за пределами своего габарита', () => {
+    // Допуск: клешня краба намеренно свешивается за край тела на 4% ширины — это часть
+    // силуэта, а не промах. Всё, что вылезло заметно дальше, обрежет канвас.
+    const slack = PLAYER_W * 0.05;
+    for (const skin of SKIN_REGISTRY) {
+        for (const facing of [1, -1]) {
+            const rec = boundsRecorder();
+            const colors = resolveSkinColors(skin, (name, fallback) => fallback);
+            skin.draw(rec, 0, 0, PLAYER_W, PLAYER_H, facing, colors);
+            const { minX, minY, maxX, maxY } = rec.box;
+            const over = Math.max(-minX, -minY, maxX - PLAYER_W, maxY - PLAYER_H);
+            assert(over <= slack, `${skin.id} при facing=${facing} вылез на ${over.toFixed(2)}`);
+        }
+    }
+});
+
 // --- Магазин скинов (§G.3 плана): оверлей внутри игры, а не игра в хабе.
 
 function shopBalance(root) {
@@ -734,6 +791,8 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         root.querySelector('.doodlejump-shop-close').click();
         assertEqual(root.querySelector('.doodlejump-shop').style.display, 'none', 'магазин закрыт');
         assertEqual(root.querySelector('.doodlejump-status').textContent, '', 'паузы больше нет');
+        // Заезд идёт — значит и возвращать нечего: экран проигрыша из витрины не всплывает.
+        assertEqual(root.querySelector('.doodlejump-over').style.display, 'none', 'итога заезда нет');
 
         frame();
         const before = lastPlayerX();
@@ -757,6 +816,9 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         assert(openBtn, 'кнопка магазина на экране проигрыша');
         openBtn.click();
         assertEqual(root.querySelector('.doodlejump-shop').style.display, 'flex', 'магазин открыт поверх');
+        // Витрина не накрывает итог заезда, а прячет его: в режиме «Цвета таверны» её фон
+        // полупрозрачный, и лежащий под ней экран проигрыша просвечивал сквозь плитки.
+        assertEqual(overlay.style.display, 'none', 'экран проигрыша убран под витрину');
 
         // Enter за спиной у витрины новый заезд не начинает.
         const played = getSettings().games.doodlejump.stats.played;

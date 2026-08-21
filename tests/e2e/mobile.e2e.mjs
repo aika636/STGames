@@ -128,13 +128,14 @@ async function runViewport(outer, viewport) {
     }
 }
 
-// Горизонталь — жёсткое требование: страница не должна ездить вбок, а экран игры
-// не должен выходить за края попапа. Вертикаль печатается, но не роняет тест:
+// Горизонталь — жёсткое требование: попап STGames не должен ездить вбок, а экран игры
+// не должен выходить за его края. Вертикаль печатается, но не роняет тест:
 // в ландшафте 360px высоты прокрутка внутри попапа — норма, а не поломка.
 function assertFits(m, name) {
     assert(
-        m.doc.scrollW <= m.doc.clientW + 1,
-        `${name}: страница едет вбок — scrollWidth ${m.doc.scrollW} при ширине ${m.doc.clientW}`,
+        m.shell.scrollW <= m.shell.clientW + 1,
+        `${name}: попап едет вбок — scrollWidth ${m.shell.scrollW} при ширине ${m.shell.clientW}`
+        + ` (${m.shell.cls}; страница таверны целиком: ${m.doc.scrollW}/${m.doc.clientW})`,
     );
     assert(
         m.overflow.length === 0,
@@ -249,12 +250,27 @@ function measure(page, boardSelector) {
             }
         }
 
+        // Переполнение меряем по попапу STGames, а не по documentElement: страница
+        // таверны едет вбок сама по себе (её #top-settings-holder — flex без
+        // flex-wrap, и десятая иконка от стороннего расширения не влезает в 360px),
+        // и на documentElement тест ловил бы чужой мусор вместо своей поломки.
+        // Разбор замера — docs/plan-doodlejump-fixes.md §B.3. Не «чинить» обратно.
+        let shell = root;
+        for (let el = root; el && el !== document.body; el = el.parentElement) {
+            if (el.matches('dialog.popup, .popup-body')) { shell = el; break; }
+        }
+
         const board = selector ? document.querySelector(selector) : null;
 
         return {
             vw,
             vh,
             doc: { scrollW: document.documentElement.scrollWidth, clientW: document.documentElement.clientWidth },
+            shell: {
+                cls: String(name(shell)).slice(0, 48),
+                scrollW: shell.scrollWidth,
+                clientW: shell.clientWidth,
+            },
             root: rootRect,
             board: board ? rect(board) : null,
             overflow: overflow.slice(0, 8),

@@ -528,19 +528,24 @@ export default async function run(env) {
         // только выше прежнего максимума.
         const before = await canvasSignature(page, '.doodlejump-canvas');
         await page.keyboard.down('ArrowRight');
-        await page.waitForFunction(
-            (snapshot) => {
-                const el = document.querySelector('.doodlejump-canvas');
-                return Boolean(el) && el.toDataURL().slice(0, 256) !== snapshot;
-            },
-            before,
-            { timeout: 10_000 },
-        );
+        // Отпустить стрелку обязаны в любом случае: упало ожидание — и зажатая клавиша
+        // осталась бы висеть до конца прогона, портя все следующие тесты.
+        try {
+            await page.waitForFunction(
+                (snapshot) => {
+                    const el = document.querySelector('.doodlejump-canvas');
+                    return Boolean(el) && el.toDataURL().slice(0, 256) !== snapshot;
+                },
+                before,
+                { timeout: 10_000 },
+            );
 
-        // Едем вбок, пока не промахнёмся мимо платформ и не улетим ниже экрана: падение
-        // и оверлей — настоящий игровой цикл на rAF, без подменённых таймеров.
-        await page.waitForSelector('.doodlejump-over-content .doodlejump-over-restart', { timeout: 60_000 });
-        await page.keyboard.up('ArrowRight');
+            // Едем вбок, пока не промахнёмся мимо платформ и не улетим ниже экрана: падение
+            // и оверлей — настоящий игровой цикл на rAF, без подменённых таймеров.
+            await page.waitForSelector('.doodlejump-over-content .doodlejump-over-restart', { timeout: 60_000 });
+        } finally {
+            await page.keyboard.up('ArrowRight').catch(() => {});
+        }
         assert(
             (await page.locator('.doodlejump-status').textContent()).includes('Enter'),
             'строка статуса после падения не зовёт нажать Enter',

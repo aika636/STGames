@@ -563,7 +563,11 @@ function createDoodleJumpScreen(root, api) {
         }
     }
 
-    function record() {
+    // announce: показывать ли тост о рекорде. Празднование адресовано тому, кто СМОТРИТ на
+    // игру, поэтому из destroy() оно выключено: игрок уже закрыл окно, а тост живёт в
+    // #toast-container поверх всего и несколько секунд глотает тапы по плиткам хаба.
+    // Записать результат всё равно надо — это данные, а тост только сообщение о них.
+    function record({ announce = true } = {}) {
         if (overRecorded) return;
         overRecorded = true;
         cashOut();
@@ -571,7 +575,7 @@ function createDoodleJumpScreen(root, api) {
             const result = recordResult(settings.stats, { score: state.score, platforms: state.landings });
             api.save();
             api.renderAllStats();
-            if (result.bestScore || result.bestPlatforms) api.toast('success', 'Новый рекорд в «Дудл Джампе»!');
+            if (announce && (result.bestScore || result.bestPlatforms)) api.toast('success', 'Новый рекорд в «Дудл Джампе»!');
         } catch (err) {
             logError('не удалось записать результат дудл джампа', err);
         }
@@ -795,7 +799,7 @@ function createDoodleJumpScreen(root, api) {
             // результата. Обоснование то же, что у монет («отбирать собранное за то, что
             // окно закрыли, — наказание на ровном месте»), а от двойной записи защищает
             // overRecorded.
-            record();
+            record({ announce: false });
             if (rafId) cancelAnimationFrame(rafId);
             keyboard.destroy();
             buttons.destroy();

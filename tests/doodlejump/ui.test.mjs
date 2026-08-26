@@ -31,6 +31,18 @@ const context = {
 
 globalThis.SillyTavern = { getContext: () => context };
 
+// Тосты идут через амбиентный toastr (src/ctx.js). Заглушка нужна не ради самих
+// сообщений, а чтобы видеть, КОГДА игра празднует рекорд: тост живёт в общем
+// #toast-container поверх всего, и лишний тост поверх хаба несколько секунд глотает
+// тапы по плиткам.
+const toasts = [];
+globalThis.toastr = {
+    success: (message) => { toasts.push(['success', message]); },
+    info: (message) => { toasts.push(['info', message]); },
+    warning: (message) => { toasts.push(['warning', message]); },
+    error: (message) => { toasts.push(['error', message]); },
+};
+
 // jsdom без пакета canvas не умеет 2d-контекст: подменяем getContext записывающей
 // заглушкой, чтобы draw() работал и тест мог видеть сдвиг фигурки между кадрами.
 // Каждая отрисовка начинается с clearRect (номер кадра). roundRect заглушка намеренно
@@ -509,6 +521,15 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         assert(root.querySelector('.doodlejump-status').textContent.includes('Enter'), 'статус зовёт нажать Enter');
     });
 
+    test('падение с рекордом празднуется тостом', () => {
+        // Обратная сторона теста «закрытие окна празднует рекорд молча»: выключить тост
+        // целиком легко и незаметно, поэтому живой путь проверяется отдельно.
+        assert(
+            toasts.some(([kind, message]) => kind === 'success' && message.includes('рекорд')),
+            `тост о рекорде показан (были: ${JSON.stringify(toasts)})`,
+        );
+    });
+
     test('результат записан ровно один раз за заезд', () => {
         assert(stats.bestPlatforms > 0, 'платформы записаны');
         assert(stats.bestScore > 0, 'высота записана');
@@ -642,12 +663,20 @@ await session({ gameId: 'doodlejump' }, async (root) => {
         assertEqual(getSettings().games.doodlejump.stats.bestScore, 0, 'рекорд пока нулевой');
         assertEqual(getSettings().games.doodlejump.stats.played, 1, 'а заезд уже числится сыгранным');
     });
+    toasts.length = 0;
 });
 
 test('брошенный заезд записывает высоту при закрытии окна', () => {
     const stats = getSettings().games.doodlejump.stats;
     assertEqual(stats.bestScore, heightInQuit, 'рекорд — высота брошенного заезда');
     assertEqual(stats.played, 1, 'сыгранным заезд остался ровно одним');
+});
+
+// Записать — обязательно, отпраздновать — нет. Празднование адресовано тому, кто смотрит
+// на игру; закрывший окно уже ушёл в хаб, а тост перекрыл бы ему верхний ряд плиток.
+test('закрытие окна празднует рекорд молча', () => {
+    assert(getSettings().games.doodlejump.stats.bestScore > 0, 'рекорд при этом записан');
+    assertEqual(toasts.length, 0, `тостов после закрытия окна нет (были: ${JSON.stringify(toasts)})`);
 });
 
 // Кошелёк из руками поправленного settings.json может оказаться чем угодно: экран обязан

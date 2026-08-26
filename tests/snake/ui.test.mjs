@@ -29,6 +29,17 @@ const context = {
 
 globalThis.SillyTavern = { getContext: () => context };
 
+// Тосты идут через амбиентный toastr (src/ctx.js). Заглушка нужна, чтобы видеть, когда
+// игра празднует рекорд: тост живёт в общем #toast-container поверх всего, и лишний тост
+// поверх хаба несколько секунд глотает тапы по плиткам.
+const toasts = [];
+globalThis.toastr = {
+    success: (message) => { toasts.push(['success', message]); },
+    info: (message) => { toasts.push(['info', message]); },
+    warning: (message) => { toasts.push(['warning', message]); },
+    error: (message) => { toasts.push(['error', message]); },
+};
+
 // jsdom без пакета canvas не умеет 2d-контекст: подменяем getContext записывающей
 // заглушкой, чтобы draw() работал и тест мог видеть сдвиг головы между тиками.
 // Каждая отрисовка начинается с clearRect (номер кадра), первый fillRect кадра —
@@ -199,6 +210,15 @@ await session({ gameId: 'snake' }, async (root) => {
         assertEqual(stats.bestLength, 3, 'длина записана');
         assertEqual(stats.bestScore, 0, 'счёт ноль — рекорд не по счёту');
     });
+
+    test('смерть с рекордом празднуется тостом', () => {
+        // Обратная сторона теста «закрытие окна празднует рекорд молча»: выключить тост
+        // целиком легко и незаметно, поэтому живой путь проверяется отдельно.
+        assert(
+            toasts.some(([kind, message]) => kind === 'success' && message.includes('рекорд')),
+            `тост о рекорде показан (были: ${JSON.stringify(toasts)})`,
+        );
+    });
 });
 
 // Брошенная партия (закрыли окно посреди заезда) записывает результат: «сыграно» выросло
@@ -213,12 +233,19 @@ await session({ gameId: 'snake' }, async () => {
         assertEqual(stats.played, 1, 'заезд числится сыгранным');
         assertEqual(stats.bestLength, 0, 'а длина ещё не записана');
     });
+    toasts.length = 0;
 });
 
 test('брошенная партия записывает результат при закрытии окна', () => {
     const stats = getSettings().games.snake.stats;
     assertEqual(stats.played, 1, 'сыгранным заезд остался ровно одним');
     assertEqual(stats.bestLength, 3, 'длина стартовой змейки записана');
+});
+
+// Записать — обязательно, отпраздновать — нет: закрывший окно уже смотрит на хаб.
+test('закрытие окна празднует рекорд молча', () => {
+    assert(getSettings().games.snake.stats.bestLength > 0, 'рекорд при этом записан');
+    assertEqual(toasts.length, 0, `тостов после закрытия окна нет (были: ${JSON.stringify(toasts)})`);
 });
 
 test('destroy снимает слушатель keydown с document', () => {

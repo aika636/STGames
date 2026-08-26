@@ -173,14 +173,16 @@ function createSnakeScreen(root, api) {
 
     // Запись результата — строго один раз за заезд, на каком бы из путей (смерть или
     // победа) заезд ни закончился.
-    function record() {
+    // announce: показывать ли тост о рекорде — см. тот же приём у «Дудл Джампа». Из
+    // destroy() празднование выключено: игрок уже ушёл из игры, а тост перекрывает хаб.
+    function record({ announce = true } = {}) {
         if (overRecorded) return;
         overRecorded = true;
         try {
             const result = recordResult(settings.stats, { score: state.score, length: state.snake.length });
             api.save();
             api.renderAllStats();
-            if (result.bestScore || result.bestLength) api.toast('success', 'Новый рекорд в Змейке!');
+            if (announce && (result.bestScore || result.bestLength)) api.toast('success', 'Новый рекорд в Змейке!');
         } catch (err) {
             logError('не удалось записать результат змейки', err);
         }
@@ -296,7 +298,7 @@ function createSnakeScreen(root, api) {
             // «доиграю потом» тут не бывает. От двойной записи защищает overRecorded.
             // То же решение и по той же причине — у «Дудл Джампа»
             // (docs/plan-doodlejump-fixes.md §M).
-            record();
+            record({ announce: false });
             if (rafId) cancelAnimationFrame(rafId);
             keyboard.destroy();
             swipe.destroy();

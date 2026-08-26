@@ -27,7 +27,15 @@ const GAMES = Object.freeze([
     { id: 'reversi', board: '.reversi-board', square: true },
     { id: 'words', board: '.words-grid', square: false },
     { id: 'minesweeper', board: '.minesweeper-board', square: true },
-    { id: 'nonogram', board: '.nonogram-board', square: true },
+    // minCell: клетка, в которую игрок целится пальцем. У нонограммы поле самое частое
+    // и самое мелкое (на «Сложном» это 15 клеток в ряд), и она единственная, где промах
+    // мимо клетки уводит росчерк в соседний ряд. Порог держит завоёванное: до правки
+    // полей окна клетка на 360×640 выходила 13 px при пальце в 40 — играть было нечем.
+    // Пороги с запасом: клетка гуляет на пару пикселей от картинки к картинке (рисунок
+    // берётся из банка случайно, а от числа подсказок зависит ширина их колонки).
+    // Замеры после правки — портрет 19.3–20.2, ландшафт 11–13.4; до правки было 13.1
+    // и 9.8. Пороги стоят между этими парами, чтобы ловить откат, а не разброс.
+    { id: 'nonogram', board: '.nonogram-board', square: true, minCell: { selector: '.nonogram-cell', level: 'hard', portrait: 16, landscape: 10.5 } },
     { id: 'crossword', board: '.crossword-board', square: true },
     { id: 'balda', board: '.balda-board', square: true },
     { id: 'doodlejump', board: '.doodlejump-canvas', square: false, portrait: 5 / 8 },
@@ -97,6 +105,7 @@ async function runViewport(outer, viewport) {
                     );
                 }
                 assertFits(m, game.id);
+                if (game.minCell) await assertCellSize(page, game, viewport);
 
                 await closeShell(page);
             });
@@ -131,6 +140,27 @@ async function runViewport(outer, viewport) {
 // Горизонталь — жёсткое требование: попап STGames не должен ездить вбок, а экран игры
 // не должен выходить за его края. Вертикаль печатается, но не роняет тест:
 // в ландшафте 360px высоты прокрутка внутри попапа — норма, а не поломка.
+// Мерка клетки на самом мелком уровне игры: порог сторожит ширину, отвоёванную у полей
+// попапа. Уровень переключаем сами — по умолчанию открывается лёгкий, а больно бывает
+// на сложном.
+async function assertCellSize(page, game, viewport) {
+    const { selector, level, portrait, landscape } = game.minCell;
+    const limit = viewport.width > viewport.height ? landscape : portrait;
+    await page.selectOption(`.${game.id}-select`, level);
+    await page.waitForTimeout(200);
+    const size = await page.evaluate((sel) => {
+        const cell = document.querySelector(sel);
+        if (!cell) return null;
+        const r = cell.getBoundingClientRect();
+        return Math.min(r.width, r.height);
+    }, selector);
+    assert(size !== null, `${game.id}: клетка не найдена по «${selector}»`);
+    assert(
+        size >= limit,
+        `${game.id}: клетка на уровне «${level}» — ${size.toFixed(1)}px, меньше порога ${limit}px`,
+    );
+}
+
 function assertFits(m, name) {
     assert(
         m.shell.scrollW <= m.shell.clientW + 1,

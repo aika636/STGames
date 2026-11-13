@@ -284,7 +284,7 @@ function measure(page, boardSelector) {
         // таверны едет вбок сама по себе (её #top-settings-holder — flex без
         // flex-wrap, и десятая иконка от стороннего расширения не влезает в 360px),
         // и на documentElement тест ловил бы чужой мусор вместо своей поломки.
-        // Разбор замера — docs/plan-doodlejump-fixes.md §B.3. Не «чинить» обратно.
+        // Не «чинить» обратно.
         let shell = root;
         for (let el = root; el && el !== document.body; el = el.parentElement) {
             if (el.matches('dialog.popup, .popup-body')) { shell = el; break; }

@@ -22,7 +22,7 @@ import { attachKeyboard, createButtons, createDrag } from './ui/controls.js';
 const DEFAULTS = Object.freeze({
     stats: {},
     // Кошелёк и скины — рядом со stats, а не внутри: кнопка «Сбросить» в панели обнуляет
-    // статистику, и заработанное она трогать не должна (docs/plan-doodlejump-fixes.md §G.1).
+    // статистику, и заработанное она трогать не должна.
     wallet: { coins: 0 },
     skins: { owned: ['default'], current: 'default' },
     difficulty: DEFAULT_DIFFICULTY,
@@ -52,7 +52,7 @@ export default {
     tagline: 'Прыгай выше — не упади',
     // Хаб и панель настроек сами дописывают fa-solid — здесь только имя глифа, как у
     // остальных игр. Наличие fa-shoe-prints в наборе ST 1.18.0 проверяется на живой
-    // инсталляции (Фаза 5).
+    // инсталляции.
     icon: 'fa-shoe-prints',
     defaults: DEFAULTS,
     slash: { name: 'doodlejump', help: 'Открыть игру «Дудл Джамп»' },
@@ -194,8 +194,8 @@ function createDoodleJumpScreen(root, api) {
     stage.appendChild(overlay);
 
     // Магазин — второй оверлей на той же сцене, а не отдельная игра в хабе: покупают
-    // скины для этой игры и надевают их тут же, уходить за этим некуда
-    // (docs/plan-doodlejump-fixes.md §G.3). Открытый с экрана проигрыша, он этот экран
+    // скины для этой игры и надевают их тут же, уходить за этим некуда.
+    // Открытый с экрана проигрыша, он этот экран
     // прячет (openShop) и возвращает при закрытии — накрыть его собой нельзя, витрина
     // на светопрозрачной палитре темы просвечивает.
     // Пауза — плашка поверх поля, а не только строчка под кнопками: на снятых кадрах
@@ -426,7 +426,7 @@ function createDoodleJumpScreen(root, api) {
                 btn.textContent = `Купить за ${skin.price}`;
                 action = () => {
                     // Цену магазин передаёт сам: реестр скинов живёт в ui/, и ядро о нём
-                    // знать не должно (docs/plan-doodlejump-fixes.md §G.3).
+                    // знать не должно.
                     const res = buySkin(settings, skin.id, skin.price);
                     if (!res.ok) {
                         // Отклик на КАЖДУЮ причину: молча ничего не делающая кнопка
@@ -487,7 +487,7 @@ function createDoodleJumpScreen(root, api) {
         cashOut();
         // И заодно чиним записи настроек, если их правили руками. Отдельным вызовом, а не
         // побочным действием покупки: сохранить починку надо в любом случае, а покупка
-        // может и не состояться (docs/plan-doodlejump-fixes.md §L.5).
+        // может и не состояться.
         try {
             repairWallet(settings);
             api.save();

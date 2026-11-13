@@ -79,7 +79,7 @@ export default async function run(env) {
         assertEqual(await page.locator('.reversi-cell').count(), 64, 'на доске не 64 клетки');
 
         // Доска должна остаться квадратной в реальном попапе ST: в jsdom размеров нет
-        // вовсе, а в Фазе 5 именно здесь ломалась вёрстка на узком экране.
+        // вовсе, а именно здесь ломается вёрстка на узком экране (см. docs/mobile.md).
         const box = await page.locator('.reversi-board').boundingBox();
         assert(box && box.width > 0, 'доска нулевой ширины');
         assert(Math.abs(box.width - box.height) <= 2, `доска не квадратная: ${box.width}×${box.height}`);
@@ -194,7 +194,7 @@ export default async function run(env) {
         assertEqual(await page.locator('.minesweeper-cell').count(), 81, 'на поле не 81 клетка');
 
         // Поле должно остаться квадратным в реальном попапе ST: в jsdom размеров нет
-        // вовсе, а именно здесь ломалась вёрстка на узком экране (грабли Фазы 5).
+        // вовсе, а именно здесь ломалась вёрстка на узком экране (см. docs/mobile.md).
         const box = await page.locator('.minesweeper-board').boundingBox();
         assert(box && box.width > 0, 'поле нулевой ширины');
         assert(Math.abs(box.width - box.height) <= 2, `поле не квадратное: ${box.width}×${box.height}`);
@@ -301,7 +301,7 @@ export default async function run(env) {
         assertEqual(await page.locator('.crossword-cell').count(), 49, 'на сетке лёгкого уровня не 49 клеток');
 
         // Сетка должна остаться квадратной в реальном попапе ST: держится квадрат на
-        // aspect-ratio и container-запросах, а в jsdom размеров нет вовсе (грабли Фазы 5).
+        // aspect-ratio и container-запросах, а в jsdom размеров нет вовсе (см. docs/mobile.md).
         const box = await page.locator('.crossword-board').boundingBox();
         assert(box && box.width > 0, 'сетка нулевой ширины');
         assert(Math.abs(box.width - box.height) <= 2, `сетка не квадратная: ${box.width}×${box.height}`);

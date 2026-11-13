@@ -14,7 +14,7 @@ export const BALDA_DEFAULTS = Object.freeze({
     level: 'medium',
     // Кто ходит первым. Размер поля настройкой не сделан намеренно: 5×5 — канон балды,
     // а поле 7×7 требует семибуквенного загаданного слова и не помещается на телефоне
-    // вместе с клавиатурой (грабли Фазы 5 — см. блок .balda-root в style.css).
+    // вместе с клавиатурой (см. docs/mobile.md и блок .balda-root в style.css).
     playFirst: 'human',
     // Статистика по уровням: { [level]: { played, wins, losses, draws, bestScore } }.
     stats: {},

@@ -63,8 +63,7 @@ function linkExtension(dataRoot) {
 
 // Каталог public/scripts/extensions/third-party грузится таверной независимо от
 // data-root, поэтому лежащая там копия STGames перебивает junction, который прогон
-// делает во временный data-root, — и тесты молча проверяют вчерашний код (это стоило
-// целого дня проверок, см. docs/plan-doodlejump-fixes.md §B.0). Падаем внятно.
+// делает во временный data-root, — и тесты молча проверяют устаревший код. Падаем внятно.
 function assertNoRivalCopies(stDir) {
     const dir = join(stDir, 'public', 'scripts', 'extensions', 'third-party');
     if (!existsSync(dir)) return;

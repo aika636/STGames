@@ -21,17 +21,14 @@ Thumbs.db
 # Локальный деплой на тестовый стенд (внутренние адреса)
 deploy.sh
 
-# Временные e2e-скрипты «посмотреть глазами»: живут в рабочем дереве, в репозиторий
-# не едут (их уже один раз выносили — коммит 87d33a6).
+# Временные e2e-скрипты «посмотреть глазами»
 tests/e2e/live-view.mjs
 tests/e2e/theme-sweep.mjs
 
 # Куда e2e-прогон временно уносит копии расширения из третьесторонних каталогов ST
 .parked-third-party/
 
-# Рабочие документы разработки
-docs/roadmap.md
-docs/development.md
-docs/plan-doodlejump.md
-docs/plan-doodlejump-fixes.md
-docs/doodlejump-todo.md
+# Локальные файлы разработки
+CLAUDE.md
+AGENTS.md
+.dev/

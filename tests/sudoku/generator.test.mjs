@@ -19,7 +19,7 @@ import { mulberry32 } from '../../src/games/sudoku/core/rng.js';
 import { assert, assertEqual, report, test } from '../_harness.mjs';
 
 const PUZZLES_PER_LEVEL = Number(process.argv[2]) || 100;
-const TIME_BUDGET_MS = 100; // на одну головоломку, см. docs/roadmap.md, Фаза 1
+const TIME_BUDGET_MS = 100; // на одну головоломку
 
 console.log('generator + rate');
 

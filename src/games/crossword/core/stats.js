@@ -56,6 +56,6 @@ export function isEmpty(stats) {
     return Object.keys(stats ?? {}).every((key) => readEntry(stats, key).played === 0);
 }
 
-// Синонимы под общие имена из плана Фазы 12 — тот же код, чтобы UI мог звать
-// статистику любым из двух привычных названий.
+// Синонимы под общие имена статистики — тот же код, чтобы UI мог звать
+// её любым из двух привычных названий.
 export { readEntry as readStats, recordSolved as recordResult };

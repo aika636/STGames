@@ -1,4 +1,4 @@
-// Тесты статистики по уровням (Фаза 4). Чистое ядро, зависимостей нет.
+// Тесты статистики по уровням. Чистое ядро, зависимостей нет.
 // Запуск: node tests/stats.test.mjs
 
 import { EMPTY_ENTRY, isEmpty, readEntry, recordPlayed, recordSolved, resetStats } from '../../src/games/sudoku/core/stats.js';
